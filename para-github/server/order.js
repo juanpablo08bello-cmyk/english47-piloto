@@ -82,6 +82,15 @@ function segments(ws, items, nameOptional) {
   return out;
 }
 
+// Los avisos se arman con etiquetas del catalogo: «el ribeye», «los espárragos», «papas».
+const de = (label) => (label.startsWith('el ') ? `del ${label.slice(3)}` : `de ${label}`);
+const capitalized = (text) => text[0].toUpperCase() + text.slice(1);
+function isPlural(label) {
+  const first = label.split(' ')[0];
+  return first === 'los' || first === 'las' || (first !== 'el' && first !== 'la' && first.endsWith('s'));
+}
+const missing = (label) => `${isPlural(label) ? 'Faltaron' : 'Faltó'} ${label}`;
+
 export function checkOrder(text, spec) {
   const ws = String(text ?? '').split(/[.,;:!?]+/).flatMap((part) => [...tokens(part), '|']);
   const problems = [];
@@ -90,26 +99,26 @@ export function checkOrder(text, spec) {
   for (const item of items) {
     const seg = segs.get(item);
     if (!seg) {
-      problems.push(`Faltó ${item.label}.`);
+      problems.push(`${missing(item.label)}.`);
       continue;
     }
-    if (item.qty && item.qty > 1 && item.lastQty !== item.qty) problems.push(`Revisa la cantidad de ${item.label}: son ${item.qty}.`);
-    if (item.qty === 1 && item.lastQty > 1) problems.push(`Revisa la cantidad de ${item.label}: es una sola.`);
+    if (item.qty && item.qty > 1 && item.lastQty !== item.qty) problems.push(`Revisa la cantidad ${de(item.label)}: son ${item.qty}.`);
+    if (item.qty === 1 && item.lastQty > 1) problems.push(`Revisa la cantidad ${de(item.label)}: es ${item.label.startsWith('el ') ? 'uno solo' : 'una sola'}.`);
     if (item.temp) {
       const temp = finalTemp(seg);
-      if (!temp) problems.push(`Faltó el término de ${item.label}: ${item.temp}.`);
-      else if (temp !== item.temp) problems.push(`El término final de ${item.label} es ${item.temp}, no ${temp}.`);
+      if (!temp) problems.push(`Faltó el término ${de(item.label)}: ${item.temp}.`);
+      else if (temp !== item.temp) problems.push(`El término final ${de(item.label)} es ${item.temp}, no ${temp}.`);
     }
     for (const r of item.remove ?? []) {
       const state = wordState(seg, r.word);
-      if (state === 'present') problems.push(`${item.label} va ${r.label}, y tu frase dice lo contrario.`);
+      if (state === 'present') problems.push(`${capitalized(item.label)} va ${r.label}, y tu frase dice lo contrario.`);
       else if (state === 'absent') problems.push(`Faltó aclarar que ${item.label} va ${r.label}.`);
     }
     for (const a of item.add ?? []) {
-      if (!a.words.some((w) => wordState(seg, w) === 'present')) problems.push(`Faltó ${a.label} en ${item.label}.`);
+      if (!a.words.some((w) => wordState(seg, w) === 'present')) problems.push(`${missing(a.label)} en ${item.label}.`);
     }
     for (const f of item.forbid ?? []) {
-      if (f.words.some((w) => wordState(seg, w) === 'present')) problems.push(`${item.label} no lleva ${f.label}: se cambió.`);
+      if (f.words.some((w) => wordState(seg, w) === 'present')) problems.push(`${capitalized(item.label)} no lleva ${f.label}: ${isPlural(f.label) ? 'se cambiaron' : 'se cambió'}.`);
     }
     for (const s of item.side ?? []) {
       const word = tokens(s.word);
