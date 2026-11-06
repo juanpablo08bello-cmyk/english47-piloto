@@ -86,6 +86,56 @@ test('el criterio critico falla aunque el resto este bien: no se resuelve', asyn
   await app.stop();
 });
 
+const WRONG_ORDER = 'So that is one burger well done with fries, and nothing else for the table.';
+const ORDER_SCENARIOS = ['dinner_for_two', 'coffee_and_cocktails', 'table_of_three'];
+
+async function playToEnd(api, scenarioId, helpMode, lastLines) {
+  const { sim } = (await api('POST', '/api/sim', { scenarioId, mode: 'demo', helpMode })).data;
+  const lines = [...models(scenarioId).slice(0, -1), ...lastLines];
+  let reply;
+  for (let i = 0; i < lines.length; i++) {
+    reply = await api('POST', `/api/sim/${sim.id}/turn`, { text: lines[i], source: 'text', requestId: `o${i}` });
+    assert.equal(reply.status, 200, JSON.stringify(reply.data));
+  }
+  assert.equal(reply.data.sim.done, true);
+  const closing = reply.data.sim.turns.at(-1).text;
+  return { closing, ...(await api('POST', `/api/sim/${sim.id}/finish`)).data };
+}
+
+for (const scenarioId of ORDER_SCENARIOS) {
+  test(`${scenarioId}: una orden mal confirmada no se aprueba ni se resuelve`, async () => {
+    const app = await startApp();
+    const api = await login(app, 'ana');
+    const { closingLine } = SCENARIO_BY_ID.get(scenarioId);
+    for (const [helpMode, last] of [['help', [WRONG_ORDER, WRONG_ORDER]], ['work', [WRONG_ORDER]]]) {
+      const out = await playToEnd(api, scenarioId, helpMode, last);
+      assert.notEqual(out.closing, closingLine, 'el cliente no da por buena una orden equivocada');
+      assert.match(out.closing, /not what we ordered/);
+      assert.equal(out.sim.outcome, 'completed');
+      assert.ok(out.sim.summary.reinforce.length > 0);
+    }
+    await app.stop();
+  });
+
+  test(`${scenarioId}: una orden bien confirmada se aprueba y se resuelve`, async () => {
+    const app = await startApp();
+    const api = await login(app, 'ana');
+    const out = await playToEnd(api, scenarioId, 'help', [models(scenarioId).at(-1)]);
+    assert.equal(out.closing, SCENARIO_BY_ID.get(scenarioId).closingLine);
+    assert.equal(out.sim.outcome, 'resolved');
+    await app.stop();
+  });
+}
+
+test('corregir la orden en el segundo intento sí se aprueba y se resuelve', async () => {
+  const app = await startApp();
+  const api = await login(app, 'ana');
+  const out = await playToEnd(api, 'dinner_for_two', 'help', [WRONG_ORDER, models('dinner_for_two').at(-1)]);
+  assert.equal(out.closing, SCENARIO_BY_ID.get('dinner_for_two').closingLine);
+  assert.equal(out.sim.outcome, 'resolved');
+  await app.stop();
+});
+
 test('una respuesta equivocada pero real conserva el habito; un disparate no', async () => {
   const app = await startApp();
   const api = await login(app, 'ana');
