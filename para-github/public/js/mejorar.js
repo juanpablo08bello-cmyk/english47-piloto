@@ -90,8 +90,12 @@ export async function viewMejorarJugar(ctx, mode) {
     }
   };
 
+  let finishing = false;
   const finish = async () => {
+    if (finishing) return; // Un doble toque no repite la celebración.
+    finishing = true;
     cleanup();
+    main.innerHTML = '<div class="stage center"><span class="spinner spinner-lg"></span></div>';
     try {
       const out = await api('POST', '/api/mejorar/terminar');
       ctx.state.stats = out.stats;
