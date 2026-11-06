@@ -1,0 +1,24 @@
+{
+  "name": "english47",
+  "version": "0.4.0",
+  "private": true,
+  "description": "ENGLISH47: inglés de servicio para meseros hispanohablantes en Miami Beach",
+  "type": "module",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning server/index.js",
+    "contar": "node scripts/contar-catalogo.js",
+    "respaldar": "node --disable-warning=ExperimentalWarning scripts/respaldar.js",
+    "cuenta-prueba": "node --disable-warning=ExperimentalWarning scripts/crear-cuenta-prueba.js",
+    "test": "node --disable-warning=ExperimentalWarning --test --test-force-exit \"test/*.test.js\"",
+    "db:init": "node scripts/postgres.js init",
+    "db:import": "node scripts/postgres.js import"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.5.0",
+    "pg": "8.23.1",
+    "ws": "8.22.1"
+  }
+}
