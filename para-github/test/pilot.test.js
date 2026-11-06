@@ -23,6 +23,40 @@ async function play(api, scenarioId, lines, helpMode = 'work') {
   return { id: sim.id, ...(await api('POST', `/api/sim/${sim.id}/finish`)).data };
 }
 
+test('los avisos de una orden se leen bien en español', () => {
+  const ribeye = { label: 'el ribeye', names: ['ribeye'], temp: 'medium rare', add: [{ label: 'los espárragos', words: ['asparagus'] }], forbid: [{ label: 'papas', words: ['fries'] }] };
+  const salad = { label: 'la ensalada', names: ['salad'], qty: 1 };
+  assert.deepEqual(checkOrder('one ribeye well done with fries and one salad', { items: [ribeye, salad] }).problems, [
+    'El término final del ribeye es medium rare, no well done.',
+    'Faltaron los espárragos en el ribeye.',
+    'El ribeye no lleva papas: se cambiaron.',
+  ]);
+  assert.deepEqual(checkOrder('one ribeye with asparagus', { items: [ribeye, salad] }).problems, [
+    'Faltó el término del ribeye: medium rare.',
+    'Faltó la ensalada.',
+  ]);
+  assert.deepEqual(checkOrder('two salad', { items: [salad] }).problems, ['Revisa la cantidad de la ensalada: es una sola.']);
+  assert.deepEqual(checkOrder('two coffee', { items: [{ label: 'el café', names: ['coffee'], qty: 1 }] }).problems, ['Revisa la cantidad del café: es uno solo.']);
+  assert.deepEqual(checkOrder('three tacos', { items: [{ label: 'el taco', names: ['tacos'], qty: 2 }] }).problems, ['Revisa la cantidad del taco: son 2.']);
+  assert.deepEqual(checkOrder('one burger with onions', { items: [{ label: 'la hamburguesa', names: ['burger'], remove: [{ label: 'sin cebolla', word: 'onions' }] }] }).problems, ['La hamburguesa va sin cebolla, y tu frase dice lo contrario.']);
+  assert.deepEqual(checkOrder('one burger', { items: [{ label: 'la hamburguesa', names: ['burger'], add: [{ label: 'la ensalada', words: ['salad'] }] }] }).problems, ['Faltó la ensalada en la hamburguesa.']);
+});
+
+test('ningún aviso del catálogo de órdenes queda mal escrito', () => {
+  const specs = SCENARIOS.flatMap((s) => s.beats.map((b) => b.check).filter(Boolean));
+  specs.push(...DIAGNOSTIC.map((q) => q.spec?.order).filter(Boolean));
+  assert.ok(specs.length > 0);
+  for (const spec of specs) {
+    const everyName = spec.items.map((i) => `five ${i.names[0]} well done`).join(' and ');
+    const forbidden = spec.items.flatMap((i) => (i.forbid ?? []).flatMap((f) => f.words)).join(' and ');
+    for (const text of ['nothing here', everyName, `${everyName} and ${forbidden}`]) {
+      for (const p of checkOrder(text, spec).problems) {
+        assert.doesNotMatch(p, /\bde el\b|Faltó (los|las|papas|camarones)\b|^[a-záéíóúñ]/, p);
+      }
+    }
+  }
+});
+
 test('A. una duda sobre otra cosa no excusa una garantia', () => {
   const spec = { reply: 'x', required: ['check_kitchen'] };
   const bad = 'I am not sure about the price. It is totally safe; let me check with the kitchen.';
