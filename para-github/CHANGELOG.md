@@ -3,6 +3,7 @@
 ## 0.4.0-piloto, ajuste (2026-11-06)
 
 - En las mesas que terminan confirmando una orden (Dinner for two, Coffee and cocktails, Table of three), si la confirmación queda mal el cliente ya no responde que está perfecta y el resultado es «Completado», no «Resuelto». La XP no cambia. Los resultados ya guardados no se recalculan.
+- Los avisos sobre órdenes se leen bien en español: «del ribeye», «Faltaron los espárragos», mayúscula inicial y «es uno solo» o «es una sola» según el plato.
 
 ## 0.3.0-piloto (2026-11-05)
 
