@@ -156,7 +156,10 @@ function demoTurn(sim, scenario, text) {
   }
   state.retried = false;
   state.beat += 1;
-  if (state.beat >= scenario.beats.length) return { guest: scenario.closingLine, done: true };
+  if (state.beat >= scenario.beats.length) {
+    // El cierre del guion aprueba la orden: no se dice si la confirmacion quedo mal.
+    return { guest: order && !met ? "Hmm, that's not what we ordered. We'll check the food when it comes out." : scenario.closingLine, done: true };
+  }
   const rng = seededRng(`${state.seed}:${state.beat}`);
   const variants = scenario.beats[state.beat].guest;
   return { guest: variants[Math.floor(rng() * variants.length)], done: false };
@@ -320,7 +323,10 @@ function computeOutcome(sim, scenario, summary) {
   if (summary.evaluator === 'unavailable') return 'completed';
   const met = summary.criteria.filter((c) => c.met).length;
   const criticalOk = !scenario.critical || summary.criteria.find((c) => c.id === scenario.critical)?.met;
-  return criticalOk && met / summary.criteria.length >= RESOLVE_SHARE ? 'resolved' : 'completed';
+  // Si la escena termina confirmando una orden, confirmarla mal impide resolverla.
+  const finalBeat = scenario.beats.at(-1);
+  const orderOk = !finalBeat.check || summary.criteria.find((c) => c.id === finalBeat.criterion)?.met;
+  return criticalOk && orderOk && met / summary.criteria.length >= RESOLVE_SHARE ? 'resolved' : 'completed';
 }
 
 export async function finishSim(db, user, simId, services, config, nowMs, hooks = {}) {
