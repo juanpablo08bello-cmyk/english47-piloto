@@ -1,11 +1,15 @@
-import { geminiPilot } from './gemini.js';
+import { azureSpeech } from './azure.js';
 import { openAiRealtimeTts } from './realtime.js';
 // Estado real de cada capacidad, limites de uso y registro de consumo.
 import { localDate } from '../dates.js';
 import { anthropicLlm, openAiStt } from './providers.js';
 
-export function createVoiceServices(config, reserve) {
-  if (config.pilotFree) return geminiPilot(config, reserve);
+export function createVoiceServices(config) {
+  if (config.pilotFree) {
+    // Modo piloto: toda la voz pasa por Azure. Sin Azure, la app sigue con la voz del dispositivo.
+    const azure = config.voiceEnabled && config.azure ? azureSpeech(config.azure) : null;
+    return azure ? { llm: null, ...azure } : { stt: null, tts: null, llm: null, pronunciation: null };
+  }
   const off = !config.voiceEnabled;
   const stt = !off && config.sttProvider === 'openai' && config.openaiKey
     ? openAiStt({ apiKey: config.openaiKey, baseUrl: config.openaiBaseUrl, model: config.sttModel }) : null;
@@ -24,7 +28,7 @@ export function voiceStatus(services, config) {
   if (!services.tts) missing.push('Voz del cliente: falta OPENAI_API_KEY (mientras tanto se usa la voz del dispositivo)');
   if (config.pilotFree) {
     missing.length=0;
-    if (!services.llm || !services.stt || !services.tts) missing.push('Revisa las capacidades gratuitas habilitadas en Administración.');
+    if (!services.stt || !services.tts) missing.push('Voz sin conectar: faltan AZURE_SPEECH_KEY y AZURE_SPEECH_REGION.');
   }
   return {
     pilotFree: Boolean(config.pilotFree),
@@ -33,7 +37,9 @@ export function voiceStatus(services, config) {
       transcription: { available: Boolean(services.stt), provider: services.stt?.name ?? null },
       customer: { available: Boolean(services.llm), provider: services.llm?.name ?? null },
       speech: { available: Boolean(services.tts), provider: services.tts?.name ?? 'voz del dispositivo' },
-      pronunciation: { available: false, provider: null, note: 'Sin servicio de pronunciación conectado: no se evalúa.' },
+      pronunciation: services.pronunciation
+        ? { available: true, provider: services.pronunciation.name }
+        : { available: false, provider: null, note: 'Sin servicio de pronunciación conectado: no se evalúa.' },
     },
     missing,
   };

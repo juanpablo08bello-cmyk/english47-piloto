@@ -1,8 +1,11 @@
-// Enrutador y pantallas. Navegacion inferior: Hoy, Ruta, Hablar, Palabras y Perfil.
-import { api, ApiError, chime, esc, icons, newRequestId, plural, setSound, statIcons, toast } from './core.js';
+// Enrutador y pantallas. Navegacion inferior: Hoy, Aprender, Mesas, Mejorar y Perfil.
+import { api, ApiError, chime, confetti, esc, icons, newRequestId, plural, setSound, statIcons, toast } from './core.js';
 import { capybara } from './capybara.js';
 import { deviceVoiceAvailable, speakDevice, stopPlayback } from './audio.js';
 import { mountExercises } from './exercise.js';
+import { viewAprender, viewAprenderJugar } from './aprender.js';
+import { viewMesas, viewMesaAtender } from './mesas.js';
+import { viewMejorar, viewMejorarJugar } from './mejorar.js';
 import { modeBanner, mountSim } from './sim.js';
 import { mountVoiceLab } from './voice-lab.js';
 
@@ -14,18 +17,11 @@ let renderToken = 0;
 
 const TABS = [
   { hash: '#/hoy', label: 'Hoy', icon: icons.today },
-  { hash: '#/ruta', label: 'Ruta', icon: icons.route },
-  { hash: '#/hablar', label: 'Hablar', icon: icons.talk },
-  { hash: '#/palabras', label: 'Palabras', icon: icons.words },
+  { hash: '#/aprender', label: 'Aprender', icon: icons.book },
+  { hash: '#/mesas', label: 'Mesas', icon: icons.plate },
+  { hash: '#/mejorar', label: 'Mejorar', icon: icons.talk },
   { hash: '#/perfil', label: 'Perfil', icon: icons.profile },
 ];
-
-const STEP_INFO = {
-  review: { title: 'Recuperar', desc: 'Expresiones anteriores, primero las que fallaste', minutes: 4 },
-  learn: { title: 'Aprender', desc: 'Expresiones nuevas en frases completas', minutes: 5 },
-  talk: { title: 'Atender una mesa', desc: 'Conversación por voz o texto', minutes: 10 },
-  improve: { title: 'Mejorar', desc: 'Dos mejoras y repetir una respuesta', minutes: 3 },
-};
 
 const OUTCOMES = {
   attempted: { label: 'Intentado', cls: '', text: 'Participaste, pero la escena no se recorrió o tus respuestas no se relacionaban con la situación.' },
@@ -51,7 +47,6 @@ function shell(content, { tab = null, focus = false } = {}) {
   app.innerHTML = `<div class="shell ${focus ? '' : 'with-tabs'}">
     ${focus ? '' : `<header class="topbar"><a class="brand" href="#/hoy" style="text-decoration:none">ENGLISH<b>47</b></a>${statsBar()}</header>`}
     <main class="content ${focus ? 'focus' : ''}" id="main">${content}</main>
-    ${state.me ? '<footer class="app-foot"><button class="linkbtn" data-report>Reportar un problema</button></footer>' : ''}
     ${focus ? '' : `<nav class="tabbar" aria-label="Principal">${tabs}</nav>`}
   </div>`;
   window.scrollTo(0, 0);
@@ -60,8 +55,8 @@ function shell(content, { tab = null, focus = false } = {}) {
 
 // --- Comentarios: se abre encima de la pantalla, sin perder lo que estabas escribiendo. ---
 const FEEDBACK_SECTION = [
-  [/^#\/(paso|sesion|breve)/, 'Práctica de hoy'], [/^#\/(ruta|leccion|repaso)/, 'Ruta'], [/^#\/(hablar|preparar|sim)/, 'Hablar'],
-  [/^#\/(palabras|palabra|practicar)/, 'Palabras'], [/^#\/perfil/, 'Perfil'], [/^#\/hoy/, 'Hoy'],
+  [/^#\/aprender/, 'Aprender'], [/^#\/mesas/, 'Mesas'], [/^#\/mejorar/, 'Mejorar'], [/^#\/(ruta|leccion|repaso)/, 'Ruta'],
+  [/^#\/(hablar|preparar|sim)/, 'Hablar'], [/^#\/(palabras|palabra|practicar)/, 'Palabras'], [/^#\/perfil/, 'Perfil'], [/^#\/hoy/, 'Hoy'],
 ];
 
 async function openFeedback() {
@@ -119,15 +114,18 @@ window.addEventListener('e47:update', () => {
 
 // --- Primer dia ---
 function viewWelcome() {
-  const main = shell(`<div class="stack-lg center" style="align-items:center;padding-top:24px">
-    ${capybara({ mood: 'welcome', size: 128, equipped: state.me?.equipped })}
-    <h1>Hola${state.me ? `, ${esc(state.me.displayName)}` : ''}</h1>
-    <p>Aquí practicas inglés de restaurante, a tu ritmo. Nadie te califica ni ve tus errores: equivocarte es parte de la práctica.</p>
-    <p class="small muted">Primero, unas preguntas para no hacerte repetir lo que ya sabes. Son unos 5 minutos.</p>
-    <a class="btn btn-primary btn-block" href="#/diagnostico/empezar">Empezar las preguntas</a>
-    <button class="linkbtn" id="skip">Omitir e ir a mi práctica</button>
-  </div>`, { focus: true });
-  main.querySelector('#skip').addEventListener('click', async () => {
+  const main = shell(`<div class="stage center">
+    ${capybara({ mood: 'welcome', size: 150, equipped: state.me?.equipped })}
+    <h1 class="display">Hola${state.me ? `, ${esc(state.me.displayName)}` : ''}</h1>
+    <div class="row-center">
+      <span class="chip chip-learn-on">Aprende</span>
+      <span class="chip chip-table">Atiende</span>
+      <span class="chip chip-xp-on">Mejora</span>
+    </div>
+    <p class="muted">Te guiamos paso a paso.</p>
+  </div>
+  <button class="btn btn-primary btn-xxl btn-block" id="go">Empezar</button>`, { focus: true });
+  main.querySelector('#go').addEventListener('click', async () => {
     await api('POST', '/api/diagnostic/skip');
     location.hash = '#/hoy';
   });
@@ -135,12 +133,13 @@ function viewWelcome() {
 
 function celebrate({ title, lines = [], mood = 'celebrate' }) {
   chime();
+  confetti();
   const el = document.createElement('div');
   el.className = 'celebrate';
   el.innerHTML = `<div class="celebrate-card" role="status">
     ${capybara({ mood, size: 128, equipped: state.me?.equipped, label: 'Capibara celebrando' })}
     <h2>${esc(title)}</h2>
-    ${lines.map((l) => `<p>${esc(l)}</p>`).join('')}
+    ${lines.length ? `<div class="celebrate-lines">${lines.map((l) => `<span>${esc(l)}</span>`).join('')}</div>` : ''}
     <button class="btn btn-primary btn-block">Continuar</button>
   </div>`;
   overlay.append(el);
@@ -152,9 +151,9 @@ function rewardLines(r) {
   if (!r) return [];
   const lines = [];
   if (r.xp) lines.push(`+${r.xp} XP`);
-  if (r.coins) lines.push(`+${r.coins} monedas por practicar hoy`);
-  if (r.bonus) lines.push(`+${r.bonus} monedas: bloque de 7 días practicados`);
-  if (r.newDay) lines.push(`Tu racha ya cuenta hoy. Vas en ${plural(state.stats?.current ?? 1, 'día', 'días')}.`);
+  if (r.coins) lines.push(`+${r.coins} monedas`);
+  if (r.bonus) lines.push(`+${r.bonus} monedas extra`);
+  if (r.newDay) lines.push(`Racha: ${plural(state.stats?.current ?? 1, 'día', 'días')}`);
   return lines;
 }
 
@@ -183,8 +182,8 @@ function viewLogin() {
   const main = shell(`<div class="stack-lg" style="padding-top:24px">
     <div class="center stack" style="align-items:center">
       ${capybara({ mood: 'welcome', size: 128, label: 'Capibara mesero de ENGLISH47' })}
-      <h1>ENGLISH<span style="color:var(--green-text)">47</span></h1>
-      <p class="muted">Tu práctica privada de inglés para el servicio.</p>
+      <h1 class="display">ENGLISH<span style="color:var(--action)">47</span></h1>
+      <p class="muted">Inglés para meseros</p>
     </div>
     <form class="stack" id="login">
       <label class="field">Usuario<input class="input" name="username" autocomplete="username" autocapitalize="none" required></label>
@@ -192,7 +191,7 @@ function viewLogin() {
       <div id="err" class="notice notice-amber" hidden role="alert"></div>
       <button class="btn btn-primary btn-block">Entrar</button>
     </form>
-    <p class="small muted center">El acceso es solo por invitación. <a href="#/invite">Tengo una invitación</a></p>
+    <p class="small center"><a href="#/invite">Tengo una invitación</a></p>
   </div>`, { focus: true });
   main.querySelector('#login').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -365,125 +364,44 @@ async function viewDiagnostic(autoStart) {
 }
 
 // --- Hoy ---
+const TODAY_STEPS = [
+  { key: 'learn', cls: 'today-learn', href: '#/aprender', title: 'Aprender', sub: 'Frases y palabras' },
+  { key: 'tables', cls: 'today-tables', href: '#/mesas', title: 'Mesas', sub: 'Atiende hablando' },
+  { key: 'improve', cls: 'today-improve', href: '#/mejorar', title: 'Mejorar', sub: 'Pronuncia y escucha' },
+];
+
 async function viewToday() {
   const today = await api('GET', '/api/today');
   Object.assign(state, { me: today.user, stats: today.stats, voice: today.voice });
   setSound(today.user.soundOn);
   if (today.user.role === 'student' && today.user.diagnosticStatus === 'pending') { location.hash = '#/bienvenida'; return; }
-  const { session, stats, weekly } = today;
-  const started = session.started;
-  const pct = Math.round((session.doneCount / session.total) * 100);
-  const cta = session.fullDone
-    ? '<a class="btn btn-block" href="#/sesion">Ver mi sesión de hoy</a>'
-    : `<a class="btn btn-primary btn-block" href="#/sesion">${started ? 'Continuar mi práctica' : 'Empezar mi práctica'}</a>`;
-  let message = '';
-  if (stats.shieldsJustUsed?.length) message = `<div class="notice small">Un protector cubrió ${plural(stats.shieldsJustUsed.length, 'día perdido', 'días perdidos')}. Tu racha sigue en pie.</div>`;
-  else if (stats.interrupted) message = `<div class="notice small">Tu aprendizaje, monedas y logros siguen aquí. Tu mejor racha es de ${plural(stats.best, 'día', 'días')}. Retomemos hoy.</div>`;
-  const mood = session.fullDone ? 'celebrate' : session.minimumMet ? 'cheer' : 'welcome';
-  shell(`<div class="stack-lg">
-    <div class="hello">
-      ${capybara({ mood, size: 80, equipped: today.user.equipped })}
+  const { stats, plan, weekly } = today;
+  const mood = plan.allDone ? 'celebrate' : plan.doneCount ? 'cheer' : 'welcome';
+  const steps = TODAY_STEPS.map((step, i) => {
+    const done = plan[step.key].done;
+    return `<a class="today-step ${step.cls} ${plan.next === step.key ? 'is-next' : ''}" href="${step.href}">
+      <span class="num">${done ? icons.check : i + 1}</span>
+      <span class="grow"><b>${step.title}</b><small>${step.sub}</small></span>
+    </a>`;
+  }).join('');
+  shell(`<div class="page">
+    <header class="hero hero-today">
       <div class="grow">
-        <h1>${esc(today.greeting)}, ${esc(today.user.displayName)}</h1>
-        <p class="stat" style="margin-top:4px">${statIcons.flame} Racha de ${plural(stats.current, 'día', 'días')}</p>
+        <h1 class="display">Hola, ${esc(today.user.displayName)}</h1>
+        <p class="streak">${statIcons.flame}${stats.current ? plural(stats.current, 'día', 'días') : 'Tu primer día'}</p>
       </div>
-    </div>
-    ${message}
-    <section class="card card-hl stack" aria-label="Objetivo de hoy">
-      <div class="spread"><h2>Objetivo de hoy</h2><span class="chip ${session.fullDone ? 'chip-green' : ''}">${session.fullDone ? `${icons.check}Completado` : `${session.doneCount}/${session.total}`}</span></div>
-      <div class="bar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100" aria-label="Actividades completadas"><i style="width:${pct}%"></i></div>
-      <p class="small muted">${plural(session.doneCount, 'actividad completada', 'actividades completadas')} de ${session.total} · ${session.activeMinutes} min activos · sesión sugerida de 22 min</p>
-      <div class="row-wrap">
-        <span class="chip ${session.minimumMet ? 'chip-green' : ''}">${session.minimumMet ? `${icons.check}Mínimo de hoy cumplido` : 'Mínimo de hoy: pendiente'}</span>
-        ${stats.earnedToday.xp || stats.earnedToday.coins ? `<span class="chip chip-blue">Hoy ganaste: +${stats.earnedToday.xp} XP, +${stats.earnedToday.coins} monedas</span>` : ''}
-      </div>
-      ${!session.minimumMet ? '<p class="small muted">Para que el día cuente basta con tres repasos y una respuesta. Da igual si te equivocas.</p>' : ''}
-      ${session.briefOnly ? `<div class="notice notice-green small"><b>Tu racha ya cuenta hoy.</b> La sesión de 22 minutos sigue pendiente, cuando puedas.</div>` : ''}
-      ${cta}
-      ${!session.minimumMet ? '<a class="btn btn-block" href="#/breve">Día difícil: práctica breve</a>' : ''}
-    </section>
-    ${session.fullDone ? `<section class="card stack" aria-label="Qué sigue">
-      <h3>Tu práctica de hoy quedó guardada</h3>
-      <p class="small">Mañana tendrás ${plural(stats.dueTomorrow, 'expresión por repasar', 'expresiones por repasar')}, expresiones nuevas y otra mesa que atender.</p>
-      <div class="row"><a class="btn btn-sm grow" href="#/repaso">Repaso opcional</a><a class="btn btn-sm grow" href="#/palabras">Palabras</a></div>
-    </section>` : ''}
-    <section class="stack" aria-label="Vocabulario de hoy">
-      <div class="spread"><h2>Vocabulario de hoy</h2><a class="small" href="#/palabras">Ver todas</a></div>
-      ${session.vocab.map((v) => `<a class="vocab-chip" href="#/palabra/${v.id}"><span><span class="en">${esc(v.en)}</span><br><span class="small muted">${esc(v.es)}</span></span></a>`).join('')}
-    </section>
-    <section class="card card-quiet stack" aria-label="Reto y recompensa">
-      <div class="spread"><b>Reto semanal</b><span class="small muted">${Math.min(weekly.done, weekly.goal)}/${weekly.goal} días</span></div>
-      <div class="bar"><i style="width:${Math.min(100, (weekly.done / weekly.goal) * 100)}%"></i></div>
-      <p class="small muted">Practica ${weekly.goal} días esta semana.</p>
-      <div class="row small">${statIcons.coin.replace('<svg', '<svg width="22" height="22"')}<span>Próxima recompensa: <b>${stats.nextReward.coins} monedas</b> en ${plural(stats.nextReward.daysLeft, 'día practicado', 'días practicados')}.</span></div>
-      ${stats.shields ? `<div class="row small">${statIcons.shield.replace('<svg', '<svg width="22" height="22"')}<span>${plural(stats.shields, 'protector guardado', 'protectores guardados')}.</span></div>` : ''}
+      ${capybara({ mood, size: 92, equipped: today.user.equipped })}
+    </header>
+    ${stats.shieldsJustUsed?.length ? '<p class="notice small">Un protector salvó tu racha.</p>' : ''}
+    ${stats.interrupted ? '<p class="notice small">Tu progreso sigue aquí. Retomemos hoy.</p>' : ''}
+    ${steps}
+    ${plan.allDone ? '<p class="fb fb-ok">¡Día completo!</p>' : ''}
+    <section class="stack" aria-label="Reto semanal">
+      <div class="spread"><b>Esta semana</b><span class="small muted">${Math.min(weekly.done, weekly.goal)}/${weekly.goal} días</span></div>
+      <div class="week">${Array.from({ length: weekly.goal }, (_, i) => `<span class="${i < weekly.done ? 'on' : ''}">${i < weekly.done ? icons.check.replace('<svg', '<svg width="20" height="20"') : i + 1}</span>`).join('')}</div>
     </section>
     ${today.user.role === 'admin' ? '<a class="btn btn-block" href="#/admin">Administración</a>' : ''}
   </div>`, { tab: '#/hoy' });
-}
-
-// --- Sesion diaria ---
-async function viewSession() {
-  const { session, stats } = await api('GET', '/api/daily');
-  state.stats = stats;
-  const steps = ['review', 'learn', 'talk', 'improve'];
-  const rows = steps.map((key, i) => {
-    const info = STEP_INFO[key];
-    const done = session.steps[key].done;
-    const isCurrent = session.nextStep === key;
-    const blocked = key === 'improve' && !session.steps.talk.done && !done;
-    const talkNote = key === 'talk' && !done && session.steps.talk.lastOutcome === 'attempted' ? '. Tu intento quedó registrado: recorre la escena para completar este paso' : '';
-    return `<a class="step ${done ? 'done' : ''} ${isCurrent ? 'current' : ''}" style="text-decoration:none" ${blocked ? 'aria-disabled="true"' : `href="#/paso/${key}"`}>
-      <span class="step-icon">${done ? icons.check : i + 1}</span>
-      <span class="grow"><b>${info.title}</b><br><span class="small muted">${info.desc}${key === 'talk' && session.steps.talk.scenario ? `: ${esc(session.steps.talk.scenario)}` : ''}${talkNote}${blocked ? '. Se abre al recorrer la conversación' : ''}</span></span>
-      <span class="small muted">${done ? 'Hecho' : `~${info.minutes} min`}</span>
-    </a>`;
-  }).join('');
-  shell(`<div class="stack-lg">
-    <div class="spread"><div><h1>Mi práctica de hoy</h1><p class="small muted">${session.activeMinutes} min activos. Avanzas al responder, no por tiempo.</p></div>${capybara({ mood: session.fullDone ? 'celebrate' : 'focus', size: 64, equipped: state.me?.equipped })}</div>
-    <div class="stack">${rows}</div>
-    ${session.fullDone ? `<div class="notice notice-green"><b>Sesión completa y guardada.</b> Puedes volver mañana, o seguir practicando: las repeticiones no suman XP de nuevo, pero sí te hacen mejor.</div><a class="btn btn-block" href="#/hablar">Practicar otra situación</a><a class="btn btn-block" href="#/repaso">Repaso opcional</a>`
-    : session.nextStep ? `<a class="btn btn-primary btn-block" href="#/paso/${session.nextStep}">Continuar: ${STEP_INFO[session.nextStep].title}</a>` : ''}
-    <a class="btn btn-block" href="#/hoy">Pausar y volver después</a>
-  </div>`, { tab: '#/hoy' });
-}
-
-async function viewStep(step) {
-  const { session } = await api('GET', '/api/daily');
-  if (step === 'talk') {
-    const t = session.steps.talk;
-    location.hash = t.simId && !t.done ? `#/sim/${t.simId}/diario` : `#/preparar/${t.scenarioId}/diario`;
-    return;
-  }
-  if (step === 'learn' && !session.steps.learn.cardsSeen) { viewCards(session); return; }
-  if (step === 'improve') { viewImprove(session); return; }
-  runDaily(step, session);
-}
-
-function viewCards(session) {
-  let i = 0;
-  const main = shell('', { focus: true });
-  const cards = session.vocab;
-  const draw = () => {
-    stopPlayback();
-    const v = cards[i];
-    main.innerHTML = `<div class="ex-top">
-        <a class="iconbtn" href="#/sesion" aria-label="Pausar y salir">${icons.close}</a>
-        <div class="bar grow"><i style="width:${(i / cards.length) * 100}%"></i></div><span class="small muted">${i + 1}/${cards.length}</span>
-      </div>
-      ${entryCard(v)}
-      <div class="stack" style="margin-top:16px">
-        <button class="btn btn-primary btn-block" id="next">${i + 1 < cards.length ? 'Siguiente expresión' : 'Practicarlas'}</button>
-      </div>`;
-    bindEntry(main);
-    main.querySelector('#next').addEventListener('click', async () => {
-      if (i + 1 < cards.length) { i += 1; draw(); return; }
-      const out = await api('POST', '/api/daily/cards-seen');
-      runDaily('learn', out.session);
-    });
-    speakDevice(v.en);
-  };
-  draw();
 }
 
 function entryCard(v) {
@@ -492,7 +410,7 @@ function entryCard(v) {
       <div class="row-wrap" style="margin-top:4px"><span class="chip">${esc(DIFFICULTY[v.difficulty] ?? '')}</span><span class="chip">${esc(v.category)}</span></div>
       ${v.pron ? `<p class="small muted">Ayuda aproximada, no reemplaza al audio: «${esc(v.pron)}»</p>` : ''}
     </div>
-    ${deviceVoiceAvailable() ? `<button class="btn btn-help btn-block" data-say="${esc(v.en)}">${icons.sound}Escuchar</button><p class="small muted">Audio con la voz de tu dispositivo. Su calidad depende del teléfono.</p>` : '<p class="small muted">Este dispositivo no tiene voz disponible: por ahora, sin audio.</p>'}
+    ${deviceVoiceAvailable() ? `<button class="btn btn-help btn-block" data-say="${esc(v.en)}">${icons.sound}Escuchar</button>` : ''}
     <div class="card stack">
       <div><p class="small muted">Frase de servicio</p><p class="en">${esc(v.phrase)}</p>${deviceVoiceAvailable() ? `<button class="linkbtn" data-say="${esc(v.phrase)}">Escuchar la frase</button>` : ''}</div>
       <div class="bubble bubble-guest"><small>${v.category.startsWith('Comunicación') ? 'Compañero' : 'Cliente'}</small><span class="en">${esc(v.guest)}</span></div>
@@ -510,38 +428,6 @@ function bindEntry(root) {
   root.querySelectorAll('[data-say]').forEach((b) => b.addEventListener('click', () => speakDevice(b.dataset.say)));
 }
 
-function mountDaily(main, { step, exercises, answers, title, onDone }) {
-  teardown = mountExercises(main, {
-    title,
-    exercises,
-    answered: answers,
-    canTranscribe: state.voice?.capabilities?.transcription?.available,
-    onClose: () => { location.hash = '#/sesion'; },
-    submit: async (index, answer, _ex, retry) => {
-      const r = await api('POST', '/api/daily/answer', { step, index, answer, retry });
-      if (r.stats) state.stats = r.stats;
-      if (r.rewards?.newDay) {
-        const lines = rewardLines(r.rewards);
-        setTimeout(() => celebrate({ title: 'Tu práctica de hoy ya cuenta', lines, mood: 'cheer' }), 300);
-      }
-      return r;
-    },
-    onDone,
-  });
-}
-
-function runDaily(step, session) {
-  const main = shell('', { focus: true });
-  const target = session.steps[step];
-  mountDaily(main, {
-    step,
-    title: STEP_INFO[step].title,
-    exercises: target.exercises,
-    answers: target.answers,
-    onDone: () => { location.hash = '#/sesion'; },
-  });
-}
-
 function improvementCard(it, extra = '') {
   return `<div class="card stack">
     ${it.yours ? `<div><p class="small muted">Dijiste</p><p>${esc(it.yours)}</p></div>` : ''}
@@ -552,54 +438,6 @@ function improvementCard(it, extra = '') {
     <button class="linkbtn" data-say="${esc(it.corrected)}">Escuchar</button>
     ${extra}
   </div>`;
-}
-
-function viewImprove(session) {
-  const imp = session.steps.improve;
-  const main = shell('', { focus: true });
-  main.innerHTML = `<div class="ex-top"><a class="iconbtn" href="#/sesion" aria-label="Salir">${icons.close}</a><h2 class="grow">Mejorar</h2></div>
-    <div class="stack-lg">
-      ${imp.items.length ? `<div class="stack">${imp.items.map((it) => improvementCard(it)).join('')}</div>` : '<div class="notice notice-green">Hoy no quedaron mejoras prioritarias. Repite una frase para fijarla.</div>'}
-      <button class="btn btn-primary btn-block" id="go">Repetir una respuesta</button>
-    </div>`;
-  bindEntry(main);
-  main.querySelector('#go').addEventListener('click', () => {
-    mountDaily(main, {
-      step: 'improve',
-      title: 'Mejorar',
-      exercises: imp.exercises,
-      answers: imp.answers,
-      onDone: async () => {
-        const fresh = (await api('GET', '/api/daily'));
-        state.stats = fresh.stats;
-        if (fresh.session.fullDone) {
-          celebrate({ title: '¡Sesión completa!', lines: ['Completaste las cuatro actividades de hoy.', 'Reto opcional en tu próximo turno: usa una expresión nueva. No afecta tu racha.'] });
-        }
-        location.hash = '#/sesion';
-      },
-    });
-  });
-}
-
-async function viewBrief() {
-  const { session } = await api('POST', '/api/daily/brief');
-  const main = shell('', { focus: true });
-  mountDaily(main, {
-    step: 'brief',
-    title: 'Práctica breve: tres repasos y una respuesta',
-    exercises: session.brief.exercises,
-    answers: session.brief.answers,
-    onDone: async () => {
-      const fresh = await api('GET', '/api/daily');
-      state.stats = fresh.stats;
-      if (fresh.session.minimumMet) {
-        celebrate({ title: 'Día conservado', lines: ['Tu racha ya cuenta hoy.', 'La sesión de 22 minutos sigue pendiente, cuando puedas.'], mood: 'cheer' });
-      } else {
-        toast('Para conservar el día hacen falta tres repasos y una respuesta relacionada con el cliente.', 6000);
-      }
-      location.hash = '#/hoy';
-    },
-  });
 }
 
 // --- Ruta ---
@@ -687,7 +525,7 @@ async function viewTalk() {
   const variants = data.scenarios.filter((s) => s.variantOf);
   shell(`<div class="stack-lg">
     <div class="hello">${capybara({ mood: 'cheer', size: 72, equipped: state.me?.equipped })}<div><h1>Hablar</h1><p class="small muted">Atiende una mesa. Sin público: solo tú y un cliente.</p></div></div>
-    ${v.aiAvailable ? modeBanner('ai', v) : `<div class="status-mode status-demo">${icons.info}<span><b>Conversación con IA sin conectar.</b> Puedes practicar con la demo: una práctica guiada con guion y respuestas de ejemplo. Lecciones y repasos funcionan igual.</span></div>`}
+    ${v.aiAvailable ? modeBanner('ai', v) : ''}
     <a class="btn btn-help btn-block" href="#/voz">Probar mi micrófono y las voces</a>
     <section class="stack"><h2>Situaciones</h2>${base.map(item).join('')}</section>
     <section class="stack"><h2>Variantes más exigentes</h2><p class="small muted">Otros pedidos e imprevistos para las mismas unidades.</p>${variants.map(item).join('')}</section>
@@ -712,32 +550,20 @@ async function viewPrepare(scenarioId, daily) {
     <form class="stack-lg" id="setup">
       <div><h1 class="en">${esc(s.title)}</h1><p class="muted">${esc(s.titleEs)} · ${esc(DIFFICULTY[s.difficulty] ?? '')}</p>${outcomeChip(s.outcome)}</div>
       <p>${esc(s.objective)}</p>
-      ${v.pilotFree ? '<p class="notice small">Si eliges IA, Google recibe el texto y el audio que envíes y puede usarlos para mejorar sus productos. Usa pedidos ficticios. Puedes elegir la mesa guiada para practicar sin enviar contenido a Google.</p>' : ''}
-      <fieldset class="stack" style="border:0;padding:0;margin:0">
+      ${v.aiAvailable ? `<fieldset class="stack" style="border:0;padding:0;margin:0">
         <legend class="small" style="font-weight:800;margin-bottom:8px">Tipo de conversación</legend>
-        <label class="option selected row" data-radio><input type="radio" name="mode" value="demo" ${v.aiAvailable ? '' : 'checked'}><span><b>Demo: práctica guiada</b><br><span class="small muted">Guion y respuestas de ejemplo. Corrección por reglas, sin IA.</span></span></label>
-        <label class="option row" data-radio style="${v.aiAvailable ? '' : 'opacity:.75'}"><input type="radio" name="mode" value="ai" ${v.aiAvailable ? 'checked' : 'disabled'}><span><b>Con IA conectada</b><br><span class="small muted">${v.aiAvailable ? 'Cliente real por IA. Conversación libre.' : 'No disponible: faltan credenciales.'}</span></span></label>
-      </fieldset>
-      ${v.aiAvailable ? '' : `<details class="card card-quiet"><summary>Qué falta para conectarla</summary>
-        <ul class="small">
-          ${capRow('Cliente IA', caps.customer)}${capRow('Transcripción de voz', caps.transcription)}${capRow('Voz del cliente', caps.speech)}
-          <li>Evaluación de pronunciación: <b>sin servicio</b>; nunca se presenta como medida.</li>
-        </ul>
-        <p class="small muted">La administración debe aprobar un proveedor y un presupuesto, y añadir las claves en el servidor.</p>
-      </details>`}
+        <label class="option row" data-radio><input type="radio" name="mode" value="demo"><span><b>Práctica guiada</b><br><span class="small muted">Guion y respuestas de ejemplo.</span></span></label>
+        <label class="option row selected" data-radio><input type="radio" name="mode" value="ai" checked><span><b>Conversación libre</b><br><span class="small muted">Un cliente que responde a lo que digas.</span></span></label>
+      </fieldset>` : ''}
       <fieldset class="stack" style="border:0;padding:0;margin:0">
         <legend class="small" style="font-weight:800;margin-bottom:8px">Corrección</legend>
         <label class="option row ${state.me?.helpMode !== 'work' ? 'selected' : ''}" data-radio><input type="radio" name="help" value="help" ${state.me?.helpMode !== 'work' ? 'checked' : ''}><span><b>Con ayuda</b><br><span class="small muted">Pistas cuando las pidas.</span></span></label>
         <label class="option row ${state.me?.helpMode === 'work' ? 'selected' : ''}" data-radio><input type="radio" name="help" value="work" ${state.me?.helpMode === 'work' ? 'checked' : ''}><span><b>Como en el trabajo</b><br><span class="small muted">El cliente sigue y la corrección llega al final.</span></span></label>
       </fieldset>
-      <p class="small muted">${v.capabilities.transcription.available ? 'En modo IA tu audio se envía al proveedor para transcribirlo y no se guarda.' : 'En la demo, tu grabación se queda en este dispositivo y se descarta.'} El micrófono se pide cuando toques el botón de hablar.</p>
+      <p class="small muted">El micrófono se pide cuando toques el botón de hablar.</p>
       <div id="err" class="notice notice-amber" hidden role="alert"></div>
       <button class="btn btn-primary btn-block">Empezar</button>
     </form>`, { focus: true });
-  if (v.aiAvailable) {
-    main.querySelector('input[value="demo"]').closest('label').classList.remove('selected');
-    main.querySelector('input[value="ai"]').closest('label').classList.add('selected');
-  }
   main.querySelectorAll('[data-radio] input').forEach((input) => input.addEventListener('change', () => {
     main.querySelectorAll(`input[name="${input.name}"]`).forEach((o) => o.closest('label').classList.toggle('selected', o.checked));
   }));
@@ -751,11 +577,6 @@ async function viewPrepare(scenarioId, daily) {
       location.hash = `#/sim/${sim.id}${daily ? '/diario' : ''}`;
     } catch (err) {
       const box = main.querySelector('#err');
-      if (v.pilotFree && err.status === 429) {
-        const guided = main.querySelector('input[name="mode"][value="demo"]');
-        guided.checked = true;
-        guided.dispatchEvent(new Event('change'));
-      }
       box.textContent = err.message;
       box.hidden = false;
       btn.disabled = false;
@@ -792,7 +613,7 @@ function viewSummary({ sim, rewards, quotesSaved }, { daily, exit }) {
   const basis = s.evaluator === 'unavailable'
     ? 'El evaluador no respondió, así que hoy no hay corrección. No la inventamos. Tu práctica sí queda registrada.'
     : s.evaluator === 'rules'
-      ? 'Revisión de la práctica guiada: reglas automáticas sobre lo que respondiste, sin IA.'
+      ? 'Revisión automática de la práctica guiada.'
       : s.evaluationBasis === 'transcript'
         ? 'Evaluación con IA sobre la transcripción de tu voz: vocabulario, intención y gramática.'
         : 'Evaluación con IA sobre tu texto: vocabulario, intención y gramática.';
@@ -817,7 +638,7 @@ function viewSummary({ sim, rewards, quotesSaved }, { daily, exit }) {
       ${s.improvements.map((it, i) => improvementCard(it, retryBox(i))).join('')}</section>` : ''}
     ${s.reinforce?.length ? `<section class="stack"><h3>Para reforzar</h3><ul class="small">${s.reinforce.map((r) => `<li>${esc(r)}</li>`).join('')}</ul></section>` : ''}
     ${s.reviewVocab?.length ? `<section class="stack"><h3>Entra a tu repaso</h3><div class="row-wrap">${s.reviewVocab.map((v) => `<a class="chip chip-blue" href="#/palabra/${v.id}" style="text-decoration:none">${esc(v.en)}</a>`).join('')}</div></section>` : ''}
-    <div class="notice small">${esc(basis)} <b>Pronunciación: no evaluada.</b></div>
+    <div class="notice small">${esc(basis)}</div>
     ${showQuoteNotice ? '<p class="small muted">Tus frases citadas se muestran solo ahora. No se guardan, porque no activaste guardar el texto de tus conversaciones.</p>' : ''}
     <section class="stack"><h3>¿Qué tan cómodo te sentiste hablando?</h3>
       <div class="scale">${[1, 2, 3, 4, 5].map((n) => `<button class="btn ${sim.comfort === n ? 'btn-primary' : ''}" data-comfort="${n}" aria-label="${n} de 5">${n}</button>`).join('')}</div>
@@ -1053,7 +874,7 @@ function calendarHtml(p) {
     ${['L', 'M', 'M', 'J', 'V', 'S', 'D'].map((h) => `<div class="cal-head">${h}</div>`).join('')}
     ${cells.join('')}
   </div>
-  <div class="row-wrap small"><span class="chip chip-green">${icons.check}Practicado</span><span class="chip chip-blue">${icons.shield}Protector</span></div>`;
+  `;
 }
 
 async function viewProfile() {
@@ -1065,99 +886,56 @@ async function viewProfile() {
   const shopRow = (i) => {
     if (i.kind === 'shield') {
       const full = p.stats.shields >= p.maxShields;
-      return `<div class="vocab-chip"><span class="grow"><b>${esc(i.name)}</b><br><span class="small muted">${esc(i.desc)} Tienes ${p.stats.shields}.</span></span>
-        <button class="btn btn-sm" data-buy="${i.id}" ${full || p.stats.coins < i.price ? 'disabled' : ''}>${i.price} monedas</button></div>`;
+      return `<div class="vocab-chip"><span class="grow"><b>${esc(i.name)}</b><br><span class="small muted">Tienes ${p.stats.shields}</span></span>
+        <button class="btn btn-sm" data-buy="${i.id}" ${full || p.stats.coins < i.price ? 'disabled' : ''}>${statIcons.coin}${i.price}</button></div>`;
     }
     const equipped = eq[i.kind] === i.id;
     const action = i.owned
       ? `<button class="btn btn-sm ${equipped ? 'btn-green' : ''}" data-equip="${i.id}" data-slot="${i.kind}" data-on="${equipped}">${equipped ? 'Puesto' : 'Usar'}</button>`
-      : `<button class="btn btn-sm" data-buy="${i.id}" ${p.stats.coins < i.price ? 'disabled' : ''}>${i.price} monedas</button>`;
-    return `<div class="vocab-chip"><span class="grow"><b>${esc(i.name)}</b><br><span class="small muted">${esc(i.desc)}</span></span>${action}</div>`;
+      : `<button class="btn btn-sm" data-buy="${i.id}" ${p.stats.coins < i.price ? 'disabled' : ''}>${statIcons.coin}${i.price}</button>`;
+    return `<div class="vocab-chip"><b class="grow">${esc(i.name)}</b>${action}</div>`;
   };
   const timezones = ['America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles', 'America/Bogota', 'America/Mexico_City', 'America/Caracas', 'America/Havana', 'Europe/Madrid'];
   if (!timezones.includes(p.user.timezone)) timezones.unshift(p.user.timezone);
-  const sim = p.simulationStats;
-  const main = shell(`<div class="stack-lg">
-    <div class="hello">${capybara({ mood: 'welcome', size: 96, equipped: eq })}<div><h1>${esc(p.user.displayName)}</h1><p class="small muted">@${esc(p.user.username)}</p></div></div>
+  const main = shell(`<div class="page">
+    <header class="hero hero-profile">
+      <div class="grow"><h1 class="display">${esc(p.user.displayName)}</h1><p class="small">@${esc(p.user.username)}</p></div>
+      ${capybara({ mood: 'welcome', size: 92, equipped: eq })}
+    </header>
+    <div class="tiles">
+      <div class="tile tile-streak"><b>${p.stats.current}</b><span>Racha</span></div>
+      <div class="tile tile-xp"><b>${p.stats.xp}</b><span>XP</span></div>
+      <div class="tile tile-coins"><b>${p.stats.coins}</b><span>Monedas</span></div>
+    </div>
+    <section class="card stack" aria-label="Calendario">${calendarHtml(p)}</section>
 
-    <section class="card stack" aria-label="Racha">
-      <div class="spread"><span class="stat">${statIcons.flame}Racha actual</span><b>${plural(p.stats.current, 'día', 'días')}</b></div>
-      <div class="spread"><span>Mejor racha</span><b>${plural(p.stats.best, 'día', 'días')}</b></div>
-      <div class="spread"><span>Días realmente practicados</span><b>${p.stats.practicedTotal}</b></div>
-      ${calendarHtml(p)}
-      <p class="small muted">Cuenta la práctica activa, aunque te equivoques. La jornada se asigna con la fecha en que terminas, según tu zona horaria. Un protector mantiene la continuidad, pero no suma un día practicado.</p>
-    </section>
+    <h2>Logros</h2>
+    <div class="stack">${p.achievements.map((a) => `<div class="ach ${a.earnedAt ? 'earned' : ''}"><div class="ach-badge">${icons.trophy}</div><b>${esc(a.name)}</b></div>`).join('')}</div>
 
-    <section class="card stack" aria-label="Recompensas">
-      <div class="spread"><span class="stat">${statIcons.xp}XP</span><b>${p.stats.xp}</b></div>
-      <div class="spread"><span class="stat">${statIcons.coin}Monedas</span><b>${p.stats.coins}</b></div>
-      <div class="spread"><span class="stat">${statIcons.shield}Protectores</span><b>${p.stats.shields} de ${p.maxShields}</b></div>
-      <p class="small muted">La XP mide actividad, no dominio.</p>
-    </section>
+    <h2>Tienda</h2>
+    <div class="stack">${p.shop.map(shopRow).join('')}</div>
 
-    <section class="stack"><h2>Lo que ya practicas</h2>
-      <div class="card stack">
-        <div class="spread"><span>Simulaciones resueltas</span><b class="small">${sim.resolved} de ${sim.total}</b></div>
-        <div class="spread"><span>Completadas, por resolver</span><b class="small">${sim.completed}</b></div>
-        <div class="spread"><span>Intentadas</span><b class="small">${sim.attempted}</b></div>
-        ${p.tasks.map((t) => `<div class="spread"><span>${esc(t.name)}</span><b class="small">${t.evidence ? plural(t.evidence, 'evidencia', 'evidencias') : 'Sin evidencia aún'}</b></div>`).join('')}
-        <div class="spread"><span>Expresiones que reconoces</span><b class="small">${p.vocabStats.recognized}</b></div>
-        <div class="spread"><span>Expresiones que usaste bien</span><b class="small">${p.vocabStats.used}</b></div>
-        <div class="spread"><span>Por consolidar</span><b class="small">${p.vocabStats.pending}</b></div>
-        ${p.comfort.length ? `<div class="spread"><span>Tu comodidad reciente (percepción)</span><b class="small">${p.comfort.join(', ')} de 5</b></div>` : ''}
-      </div>
-      <details class="card card-quiet"><summary>Qué significa cada indicador</summary>
-        <p class="small"><b>Intentado:</b> participaste, aunque no llegaras al final.</p>
-        <p class="small"><b>Completado:</b> recorriste la escena respondiendo a la situación.</p>
-        <p class="small"><b>Resuelto:</b> además cumpliste sus criterios esenciales.</p>
-        <p class="small"><b>Para reforzar:</b> lo que no salió volverá a aparecer en tu repaso.</p>
-        <p class="small"><b>Evidencia:</b> una simulación donde cumpliste esa tarea. Nada de esto certifica dominio.</p>
-      </details>
-    </section>
-
-    <section class="stack"><h2>Logros</h2>
-      ${p.achievements.map((a) => `<div class="ach ${a.earnedAt ? 'earned' : ''}"><div class="ach-badge">${icons.trophy}</div><div><b>${esc(a.name)}</b><br><span class="small muted">${a.earnedAt ? esc(a.desc) : `Pendiente. ${esc(a.desc)}`}</span></div></div>`).join('')}
-    </section>
-
-    <details class="card card-quiet"><summary>Qué funciona hoy y qué sigue pendiente</summary>
-      <p class="small"><b>Por texto:</b> lecciones, repasos y mesas funcionan completos.</p>
-      <p class="small"><b>Mesas:</b> son ${esc(state.voice?.aiAvailable ? 'conversación con IA o práctica guiada, según elijas' : 'una práctica guiada con guion: no es una conversación libre con IA')}.</p>
-      <p class="small"><b>Correcciones:</b> las hacen reglas automáticas. Si no pueden confirmar algo, dicen «Necesita revisión».</p>
-      <p class="small"><b>Audio:</b> usa la voz de tu dispositivo, cuando la tiene.</p>
-      <p class="small"><b>Micrófono:</b> grabas para escucharte, pero nadie evalúa lo que dices. ${esc(state.voice?.capabilities?.transcription?.available ? '' : 'La conversación por voz necesita conectar un servicio externo.')}</p>
-      <p class="small"><b>Pronunciación:</b> todavía no se evalúa.</p>
-    </details>
-
-    <section class="stack"><h2>Tienda</h2><p class="small muted">Solo con monedas de práctica. Nunca dinero real.</p>${p.shop.map(shopRow).join('')}</section>
-
-    <section class="card stack"><h3>Reto en tu trabajo (opcional)</h3>
-      <p>${esc(p.challenge)}</p>
-      <form id="job" class="stack"><textarea class="input" name="result" rows="2" maxlength="300" placeholder="¿Cómo te fue? Sin nombres ni datos de clientes."></textarea><button class="btn btn-block">Guardar</button></form>
-      ${p.jobLogs.map((l) => `<p class="small"><b>${esc(l.date)}:</b> ${esc(l.result)}</p>`).join('')}
-      <p class="small muted">Nunca afecta tu racha: no todos trabajan todos los días.</p>
-    </section>
-
-    <section class="stack"><h2>Ajustes</h2>
-      <div class="card stack">
-        <label class="field">Dónde empezar
-          <select class="input" id="unit">${p.units.map((u) => `<option value="${u.id}" ${u.id === p.user.placementUnit ? 'selected' : ''}>Unidad ${u.id}: ${esc(u.title)}</option>`).join('')}</select>
-        </label>
-        <label class="field">Expresiones nuevas al día
-          <select class="input" id="dailynew">${[3, 4, 5, 6, 7, 8, 10].map((n) => `<option ${n === p.user.dailyNew ? 'selected' : ''}>${n}</option>`).join('')}</select>
-        </label>
-        <p class="small muted">Se aplica desde la siguiente jornada. La sesión diaria sigue siendo de unos 22 minutos.</p>
+    <details class="card"><summary>Ajustes</summary>
+      <div class="stack">
         <label class="field">Zona horaria<select class="input" id="tz">${timezones.map((t) => `<option ${t === p.user.timezone ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></label>
-        <label class="switch"><span>Correcciones «Como en el trabajo» por defecto</span><input type="checkbox" id="work" ${p.user.helpMode === 'work' ? 'checked' : ''}></label>
-        <label class="switch"><span>Sonido de celebración</span><input type="checkbox" id="sound" ${p.user.soundOn ? 'checked' : ''}></label>
+        <label class="switch"><span>Sonido</span><input type="checkbox" id="sound" ${p.user.soundOn ? 'checked' : ''}></label>
         <label class="switch"><span>Guardar el texto de mis conversaciones</span><input type="checkbox" id="keep" ${p.user.keepTranscripts ? 'checked' : ''}></label>
-        <p class="small muted">Las grabaciones nunca se guardan. Con esta opción apagada, tus frases solo existen mientras dura la conversación: al terminar quedan tus resultados y recomendaciones, sin citas de lo que dijiste. Nadie más ve tu texto, ni otros alumnos ni la administración.</p>
-        ${p.storedQuotes ? `<div class="notice notice-amber small">Tienes ${plural(p.storedQuotes, 'resumen con citas guardadas', 'resúmenes con citas guardadas')}. ${p.user.keepTranscripts ? '' : 'Están ocultas porque la opción está apagada, pero siguen guardadas.'} Puedes quitarlas sin perder tus resultados.</div><button class="btn btn-block" id="unquote">Quitar las citas guardadas</button>` : ''}
-        <button class="btn btn-block" id="wipe">Borrar mi historial de conversaciones</button>
-        <a class="btn btn-block" href="#/diagnostico">Repetir el diagnóstico</a>
+        <p class="small muted">Las grabaciones nunca se guardan.</p>
+        ${p.storedQuotes ? '<button class="btn btn-block" id="unquote">Quitar las citas guardadas</button>' : ''}
+        <button class="btn btn-block" id="wipe">Borrar mi historial</button>
       </div>
-    </section>
+    </details>
+    <details class="card"><summary>Más práctica</summary>
+      <div class="stack">
+        <a class="btn btn-block" href="#/palabras">Diccionario</a>
+        <a class="btn btn-block" href="#/ruta">Lecciones</a>
+        <a class="btn btn-block" href="#/hablar">Mesas clásicas</a>
+        <a class="btn btn-block" href="#/voz">Probar micrófono</a>
+        <a class="btn btn-block" href="#/diagnostico">Diagnóstico</a>
+      </div>
+    </details>
     ${p.user.role === 'admin' ? '<a class="btn btn-block" href="#/admin">Administración</a>' : ''}
-    <button class="btn btn-block" data-report>Contarnos cómo te fue</button>
+    <button class="btn btn-block" data-report>Reportar un problema</button>
     <button class="btn btn-block" id="logout">Cerrar sesión</button>
   </div>`, { tab: '#/perfil' });
 
@@ -1166,7 +944,7 @@ async function viewProfile() {
     try {
       const out = await api('POST', '/api/shop/buy', { itemId: b.dataset.buy, requestId: newId() });
       state.stats = out.stats;
-      toast('Compra hecha.');
+      toast('¡Compra hecha!');
       render();
     } catch (err) { toast(err.message); }
   }));
@@ -1178,23 +956,11 @@ async function viewProfile() {
   const setting = (id, fn) => main.querySelector(id).addEventListener('change', async (e) => {
     try { await api('POST', '/api/settings', fn(e.target)); toast('Guardado.'); } catch (err) { toast(err.message); }
   });
-  setting('#dailynew', (t) => ({ dailyNew: Number(t.value) }));
   setting('#tz', (t) => ({ timezone: t.value }));
-  setting('#work', (t) => ({ helpMode: t.checked ? 'work' : 'help' }));
   setting('#sound', (t) => { setSound(t.checked); return { soundOn: t.checked }; });
   setting('#keep', (t) => ({ keepTranscripts: t.checked }));
-  main.querySelector('#unit').addEventListener('change', async (e) => {
-    try { await api('POST', '/api/placement', { unit: Number(e.target.value) }); toast('Punto de partida guardado.'); } catch (err) { toast(err.message); }
-  });
-  main.querySelector('#job').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    try {
-      await api('POST', '/api/challenge/log', { challenge: p.challenge, result: new FormData(e.target).get('result') });
-      render();
-    } catch (err) { toast(err.message); }
-  });
   main.querySelector('#unquote')?.addEventListener('click', async () => {
-    if (!confirm('Se quitarán tus frases citadas de los resúmenes. Tus resultados y recomendaciones se conservan. ¿Continuar?')) return;
+    if (!confirm('Se quitarán tus frases citadas de los resúmenes. ¿Continuar?')) return;
     await api('POST', '/api/privacy/remove-quotes');
     render();
   });
@@ -1269,15 +1035,43 @@ async function viewAdmin() {
 }
 
 // --- Enrutador ---
+// Lo que necesitan las pantallas de la práctica, en un solo lugar.
+const ctx = {
+  state,
+  shell,
+  toast,
+  setTeardown: (fn) => { teardown = fn; },
+  reward(rewards, { title, fallback }) {
+    const lines = rewardLines(rewards);
+    celebrate({ title, lines: lines.length ? lines : [fallback] });
+    showAchievements(rewards);
+  },
+  afterReward(rewards) {
+    if (rewards?.newDay) celebrate({ title: '¡Hoy ya cuenta!', lines: rewardLines(rewards), mood: 'cheer' });
+    showAchievements(rewards);
+  },
+};
+
+function showAchievements(rewards) {
+  if (rewards?.achievements?.length) celebrate({ title: '¡Logro nuevo!', lines: rewards.achievements.map(achievementName) });
+}
+
+const toHoy = () => { location.hash = '#/hoy'; };
+
 const ROUTES = [
   [/^#\/entrar$/, viewLogin, { public: true }],
   [/^#\/invite(?:\/(.+))?$/, viewInvite, { public: true }],
   [/^#\/bienvenida$/, viewWelcome],
   [/^#\/diagnostico(?:\/(empezar))?$/, viewDiagnostic],
   [/^#\/hoy$/, viewToday],
-  [/^#\/sesion$/, viewSession],
-  [/^#\/paso\/(review|learn|talk|improve)$/, viewStep],
-  [/^#\/breve$/, viewBrief],
+  [/^#\/aprender$/, () => viewAprender(ctx)],
+  [/^#\/aprender\/jugar(?:\/(\w+))?$/, (topic) => viewAprenderJugar(ctx, topic)],
+  [/^#\/mesas$/, () => viewMesas(ctx)],
+  [/^#\/mesas\/atender$/, () => viewMesaAtender(ctx)],
+  [/^#\/mejorar$/, () => viewMejorar(ctx)],
+  [/^#\/mejorar\/(pronunciar|escuchar)$/, (mode) => viewMejorarJugar(ctx, mode)],
+  [/^#\/(sesion|breve)$/, toHoy],
+  [/^#\/paso\/\w+$/, toHoy],
   [/^#\/ruta$/, viewRoute],
   [/^#\/leccion\/(\w+)$/, viewLesson],
   [/^#\/hablar$/, viewTalk],

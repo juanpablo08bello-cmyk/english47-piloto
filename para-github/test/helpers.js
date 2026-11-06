@@ -22,7 +22,7 @@ export async function startApp({ env = {}, services, now } = {}) {
   const base = `http://127.0.0.1:${server.address().port}`;
   const client = () => {
     let cookie = '';
-    return async (method, path, body, headers = {}) => {
+    const request = async (method, path, body, headers = {}) => {
       const res = await fetch(base + path, {
         method,
         headers: { ...(body ? { 'Content-Type': 'application/json' } : {}), ...(cookie ? { cookie } : {}), ...headers },
@@ -33,6 +33,8 @@ export async function startApp({ env = {}, services, now } = {}) {
       const type = res.headers.get('content-type') ?? '';
       return { status: res.status, data: type.includes('json') ? await res.json() : await res.arrayBuffer() };
     };
+    request.cookie = () => cookie;
+    return request;
   };
   return { db, base, config, server, clockBox, client, stop: () => new Promise((ok) => { server.closeAllConnections(); server.close(ok); }) };
 }

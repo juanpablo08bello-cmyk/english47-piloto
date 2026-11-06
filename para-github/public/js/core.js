@@ -83,22 +83,51 @@ export function toast(message, ms = 3500) {
 let soundEnabled = true;
 export const setSound = (on) => { soundEnabled = on; };
 
-export function chime() {
-  if (!soundEnabled) return;
+let audioCtx = null;
+const SOUNDS = {
+  tap: { notes: [660], step: 0.05, length: 0.06, volume: 0.03 },
+  miss: { notes: [330, 262], step: 0.12, length: 0.18, volume: 0.05 },
+  good: { notes: [523, 659], step: 0.1, length: 0.18, volume: 0.07 },
+  great: { notes: [523, 659, 784, 1047], step: 0.09, length: 0.2, volume: 0.07 },
+  level: { notes: [392, 523, 659, 784, 1047, 1319], step: 0.1, length: 0.3, volume: 0.08 },
+};
+
+export function playSfx(kind) {
+  const sound = SOUNDS[kind];
+  if (!soundEnabled || !sound) return;
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    [523, 659, 784].forEach((freq, i) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
+    audioCtx ??= new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+    const start = audioCtx.currentTime;
+    sound.notes.forEach((freq, i) => {
+      const at = start + i * sound.step;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'triangle';
       osc.frequency.value = freq;
-      gain.gain.setValueAtTime(0.08, ctx.currentTime + i * 0.12);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.12 + 0.2);
-      osc.connect(gain).connect(ctx.destination);
-      osc.start(ctx.currentTime + i * 0.12);
-      osc.stop(ctx.currentTime + i * 0.12 + 0.2);
+      gain.gain.setValueAtTime(sound.volume, at);
+      gain.gain.exponentialRampToValueAtTime(0.001, at + sound.length);
+      osc.connect(gain).connect(audioCtx.destination);
+      osc.start(at);
+      osc.stop(at + sound.length);
     });
-    setTimeout(() => ctx.close(), 800);
   } catch { /* sin sonido si el navegador no lo permite */ }
+}
+export const chime = () => playSfx('great');
+
+const CONFETTI_COLORS = ['#fff050', '#a9b4ff', '#ff8a65', '#35e8ad', '#ff8cc2', '#6fd3ff'];
+export function confetti(pieces = 40) {
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+  const box = document.createElement('div');
+  box.className = 'confetti';
+  box.setAttribute('aria-hidden', 'true');
+  for (let i = 0; i < pieces; i++) {
+    const piece = document.createElement('i');
+    piece.style.cssText = `left:${Math.random() * 100}%;background:${CONFETTI_COLORS[i % CONFETTI_COLORS.length]};animation-delay:${Math.random() * 0.35}s;--dx:${(Math.random() - 0.5) * 120}px;--r:${Math.random() * 720 - 360}deg`;
+    box.append(piece);
+  }
+  document.body.append(box);
+  setTimeout(() => box.remove(), 2400);
 }
 
 export function plural(n, one, many) {

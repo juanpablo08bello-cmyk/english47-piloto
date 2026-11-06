@@ -1,5 +1,3 @@
-import { freeQuota } from './voice/free-quota.js';
-import { connectPostgres } from './storage/postgres.js';
 import { writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { loadConfig, loadDotEnv } from './config.js';
@@ -12,8 +10,7 @@ import { createVoiceServices, voiceStatus } from './voice/index.js';
 loadDotEnv();
 const config = loadConfig();
 const db = await openStorage(config);
-const quotaDb = config.pilotFree && config.freeVerified && config.geminiKey ? connectPostgres(config.databaseUrl, 1) : null;
-const services = createVoiceServices(config, quotaDb ? freeQuota(quotaDb, config.freeLimits) : null);
+const services = createVoiceServices(config);
 const server = createApp({ db, config, services });
 
 const invite = await tx(db, async () => {

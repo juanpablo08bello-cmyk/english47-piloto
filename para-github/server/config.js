@@ -5,8 +5,13 @@ const num = (value, fallback) => {
   return value !== undefined && value !== '' && Number.isFinite(n) ? n : fallback;
 };
 
+const FREE_AZURE_LIMITS = { stt: 18000, tts: 500000 }; // Plan gratuito F0: 5 h y 0,5 M de caracteres al mes.
+
 export function loadConfig(env = process.env) {
+  const azure = env.AZURE_SPEECH_KEY && env.AZURE_SPEECH_REGION
+    ? { apiKey: env.AZURE_SPEECH_KEY, region: env.AZURE_SPEECH_REGION.trim().toLowerCase() } : null;
   return {
+    azure,
     port: num(env.PORT, 4747),
     host: env.HOST || '0.0.0.0',
     storage: env.DATABASE_URL || env.STORAGE_DRIVER === 'postgres' || env.PILOT_FREE === 'true' || env.RENDER === 'true' ? 'postgres' : 'sqlite',
@@ -15,12 +20,6 @@ export function loadConfig(env = process.env) {
     cookieSecure: env.COOKIE_SECURE === 'true',
     pilotFree: env.PILOT_FREE === 'true',
     voiceEnabled: env.VOICE_ENABLED !== 'false',
-    geminiKey: env.GEMINI_API_KEY,
-    freeVerified: env.GEMINI_FREE_VERIFIED === 'true',
-    freeLimits: Object.fromEntries(['stt','tts','llm'].map(kind => {
-      const n = Number(env['FREE_' + kind.toUpperCase() + '_CALLS_DAY']);
-      return [kind, Number.isSafeInteger(n) && n > 0 ? n : 0];
-    })),
     llmProvider: env.LLM_PROVIDER || 'anthropic',
     anthropicKey: env.ANTHROPIC_API_KEY || null,
     anthropicBaseUrl: env.ANTHROPIC_BASE_URL || null,
@@ -33,8 +32,8 @@ export function loadConfig(env = process.env) {
     ttsModel: (!env.TTS_MODEL || /^(gpt-4o-mini-tts|tts-1)(-|$)/.test(env.TTS_MODEL)) ? 'gpt-realtime-2.1-mini' : env.TTS_MODEL,
     ttsVoice: env.TTS_VOICE || 'marin',
     limits: {
-      stt: num(env.LIMIT_STT_SECONDS_MONTH, 36000),
-      tts: num(env.LIMIT_TTS_CHARS_MONTH, 600000),
+      stt: num(env.LIMIT_STT_SECONDS_MONTH, azure ? FREE_AZURE_LIMITS.stt : 36000),
+      tts: num(env.LIMIT_TTS_CHARS_MONTH, azure ? FREE_AZURE_LIMITS.tts : 600000),
       llm: num(env.LIMIT_LLM_TOKENS_MONTH, 3000000),
       sttPerUserDay: num(env.LIMIT_STT_SECONDS_USER_DAY, 900),
     },

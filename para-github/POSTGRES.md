@@ -1,6 +1,6 @@
 # Guardado del piloto privado · 0.4.0
 
-La web puede usar PostgreSQL para sus cuentas y su progreso. Render puede reiniciar el servidor sin borrar la base externa. La configuración local de revisión sigue usando SQLite. El modo PILOT_FREE exige PostgreSQL y utiliza exclusivamente el adaptador de Gemini. La práctica guiada funciona desde que se prepara el servidor. Para habilitar la IA gratuita consulta PILOTO.md.
+La web puede usar PostgreSQL para sus cuentas y su progreso. Render puede reiniciar el servidor sin borrar la base externa. La configuración local de revisión sigue usando SQLite. El modo PILOT_FREE exige PostgreSQL. La práctica funciona desde que se prepara el servidor. Para conectar la voz consulta PILOTO.md.
 
 ## Preparar la base
 

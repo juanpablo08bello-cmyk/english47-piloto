@@ -39,7 +39,7 @@ export function feedbackHtml(result) {
   if (fb.natural && fb.natural !== fb.corrected) parts.push(`<p class="small"><b>Alternativa natural:</b> <span class="en">${esc(fb.natural)}</span></p>`);
   if (result.note) parts.push(`<p class="small">${esc(result.note)}</p>`);
   if (result.reviewScheduled) parts.push('<p class="small">Esta expresión volverá pronto en tu repaso.</p>');
-  const evaluated = result.dims && Object.keys(result.dims).length ? '<p class="small muted">Revisado con reglas automáticas, sin IA. Pronunciación: no evaluada.</p>' : '';
+  const evaluated = result.dims && Object.keys(result.dims).length ? '<p class="small muted">Revisión automática.</p>' : '';
   return `<div class="feedback feedback-${f.cls}" role="status">
     <b>${f.icon}${f.title}</b>
     ${dimChips(result.dims)}

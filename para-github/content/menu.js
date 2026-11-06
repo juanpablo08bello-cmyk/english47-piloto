@@ -46,6 +46,13 @@ export const MENU = {
     { id: 'sparkling', name: 'Sparkling water', price: 7, kind: 'drink', description: 'Bottle of sparkling water.', ingredients: [], sides: '', mods: [], allergyNotes: '' },
     { id: 'iced_tea', name: 'Iced tea', price: 4, kind: 'drink', description: 'Unsweetened iced tea. Free refills.', ingredients: [], sides: '', mods: [], allergyNotes: '' },
     { id: 'mojito', name: 'House Mojito', price: 15, kind: 'drink', description: 'Rum, mint, lime and soda.', ingredients: [], sides: '', mods: ['Can be made without alcohol'], allergyNotes: '' },
+    { id: 'soup', name: 'Tomato Soup', price: 10, kind: 'starter', description: 'Tomato soup with basil.', ingredients: ['tomato', 'basil', 'cream'], sides: '', mods: [], allergyNotes: 'Contains dairy.' },
+    { id: 'cheesecake', name: 'Cheesecake', price: 11, kind: 'dessert', description: 'New York style cheesecake.', ingredients: ['cream cheese', 'egg', 'graham cracker'], sides: '', mods: [], allergyNotes: 'Contains dairy, egg and gluten.' },
+    { id: 'coffee', name: 'Coffee', price: 4, kind: 'drink', description: 'Hot coffee. Free refills.', ingredients: [], sides: '', mods: ['With milk or sugar'], allergyNotes: '' },
+    { id: 'lemonade', name: 'Lemonade', price: 5, kind: 'drink', description: 'House lemonade.', ingredients: [], sides: '', mods: [], allergyNotes: '' },
+    { id: 'beer', name: 'Draft Beer', price: 8, kind: 'drink', description: 'Local draft beer.', ingredients: [], sides: '', mods: [], allergyNotes: 'Contains gluten.' },
+    { id: 'red_wine', name: 'Red Wine', price: 13, kind: 'drink', description: 'Glass of house red wine.', ingredients: [], sides: '', mods: [], allergyNotes: '' },
+    { id: 'white_wine', name: 'White Wine', price: 13, kind: 'drink', description: 'Glass of house white wine.', ingredients: [], sides: '', mods: [], allergyNotes: '' },
   ],
 };
 

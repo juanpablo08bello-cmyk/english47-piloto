@@ -15,14 +15,14 @@ export function mountVoiceLab(root, { voice }) {
   let active = false, permission = false, busy = false, destroyed = false, operation = 0;
   root.innerHTML = `<div class="stack-lg">
     <div><h1>Prueba de voz</h1><p>Comprueba tu micrófono y escucha las voces antes de atender una mesa.</p></div>
-    <div class="notice small">No da XP ni modifica tu racha. Aquí no evaluamos pronunciación. Las voces generadas por IA se identifican como tales.</div>
-    ${voice?.pilotFree ? '<p class="notice small">Al usar la IA, Google recibe la frase o grabación y puede usarla para mejorar sus productos. Practica con pedidos ficticios. Grabarte y escucharte aquí solo usa tu dispositivo.</p>' : ''}
+    <div class="notice small">No da XP ni modifica tu racha. Aquí no evaluamos pronunciación.</div>
+    ${voice?.pilotFree ? '<p class="notice small">Al revisar tu voz, Microsoft Azure recibe la grabación. La app no la guarda. Practica con pedidos ficticios. Grabarte y escucharte aquí solo usa tu dispositivo.</p>' : ''}
     <section class="card stack"><h2>1. Escucha al cliente</h2>
       <label class="field">Frase de prueba<select class="input" data-sample>${SAMPLES.map((s,i)=>`<option value="${i}">${esc(s)}</option>`).join('')}</select></label>
       <label class="switch"><span>Más lento</span><input type="checkbox" data-slow></label>
       <button class="btn btn-block" data-device ${deviceVoiceAvailable()?'':'disabled'}>Escuchar voz del dispositivo</button>
-      <button class="btn btn-help btn-block" data-server ${caps.speech?.available?'':'disabled'}>Escuchar voz generada por IA</button>
-      <p class="small muted">${caps.speech?.available?'La voz IA está configurada. Este botón permite comprobar si responde; cada solicitud puede consumir uso de tu proveedor.':'La voz IA no está configurada. Puedes probar la voz de tu dispositivo.'}</p>
+      <button class="btn btn-help btn-block" data-server ${caps.speech?.available?'':'disabled'}>Escuchar voz del cliente</button>
+      <p class="small muted">${caps.speech?.available?'Es una voz generada por computador.':'Puedes probar la voz de tu dispositivo.'}</p>
       <button class="btn btn-block" data-stop>Detener audio</button>
     </section>
     <section class="card stack"><h2>2. Graba una frase</h2><p class="small">Toca para empezar y vuelve a tocar para terminar. Máximo 30 segundos. Después puedes escucharte.</p>
@@ -63,7 +63,7 @@ export function mountVoiceLab(root, { voice }) {
     try {
       let fallback = false;
       const ok = kind==='self'?await playLocal(recording.blob):kind==='device'?await speakDevice(text,{slow}):await speakCustomer(text,{slow,useServer:true,onFallback:()=>{fallback=true;}});
-      if (!destroyed && id === operation) status(ok?(fallback?'La voz IA falló; escuchaste la voz del dispositivo.':'Audio terminado.'):'Audio detenido o no disponible. Puedes volver a intentarlo.');
+      if (!destroyed && id === operation) status(ok?(fallback?'La voz falló; escuchaste la del dispositivo.':'Audio terminado.'):'Audio detenido o no disponible. Puedes volver a intentarlo.');
     } catch { if (!destroyed && id===operation) status('No se pudo reproducir. Prueba otra voz o revisa el volumen.'); }
   }
   async function finish() {

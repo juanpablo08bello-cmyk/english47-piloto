@@ -1,5 +1,21 @@
 # Registro de cambios
 
+## 0.5.0-piloto, rediseño (2026-11-06)
+
+- Gemini fuera de la app: las mesas salen del generador propio y toda la voz pasa por Azure Speech. Se retiran su adaptador y su sistema de cuotas.
+- Más entretenida: propina por turno y bono por mesa perfecta, racha de turnos con 3 estrellas, sonidos, confeti y «Otra mesa» sin volver al menú.
+- Más fluida: la grabación se detiene sola al terminar de hablar, la voz del siguiente turno llega precargada, el resultado y «Seguir» caben en una pantalla, y el micrófono muestra el volumen.
+- Corrección: la caché de voz podía reproducir la frase con la voz de otro personaje con el mismo ánimo.
+- Pantallas clásicas sin jerga técnica ni opciones que no se pueden usar.
+- La práctica diaria son tres secciones: Aprender (solo texto), Mesas (solo voz, con «Generar mesa») y Mejorar (solo voz: pronunciar y escuchar). Cualquiera cuenta para la racha; las tres completan el día. Sin migración de datos: se guarda dentro de la jornada.
+- 200 frases para principiantes en 18 temas, explicadas palabra por palabra (`content/frases.js`, `content/frases-mas.js`).
+- Generador de mesas al azar (`content/mesas.js`): 24 situaciones (cena, reservación, lista de espera, alergia, queja, plato agotado y más), personaje, acento, ánimo, pedido e imprevistos, guiando siempre qué decir. 
+- Niveles de mesas por mesas atendidas en total (nivel 2 a las 4, nivel 3 a las 10, nivel 4 a las 20): cada uno abre situaciones nuevas y alarga los turnos, hasta 10. No repite situación ni persona recientes. Los imprevistos no cortan un intercambio ni ignoran una pregunta del alumno.
+- La voz se compara con la frase guía: palabras entendidas y estrellas. No mide acento ni fonética.
+- Interfaz nueva: lienzo negro, un color por sección, menos texto, navegación Hoy, Aprender, Mesas, Mejorar y Perfil. Lecciones y mesas clásicas siguen en Perfil, «Más práctica».
+- Frases de voz en caché.
+- Azure Speech (`AZURE_SPEECH_KEY`, `AZURE_SPEECH_REGION`), en modo piloto: voz del cliente, transcripción y evaluación de pronunciación palabra por palabra contra una frase que decide el servidor. 45 personajes con voces reales de 15 orígenes, y la velocidad de la voz cambia según el ánimo. Los límites mensuales se ajustan por defecto al plan gratuito F0.
+
 ## 0.4.0-piloto, ajuste (2026-11-06)
 
 - En las mesas que terminan confirmando una orden (Dinner for two, Coffee and cocktails, Table of three), si la confirmación queda mal el cliente ya no responde que está perfecta y el resultado es «Completado», no «Resuelto». La XP no cambia. Los resultados ya guardados no se recalculan.

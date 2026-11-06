@@ -8,6 +8,17 @@ let currentUrl = null;
 let finishPlayback = null;
 let speechRequest = null;
 
+// Los teléfonos solo dejan sonar audio tras un toque: un mismo reproductor, desbloqueado en el primer toque,
+// permite que el cliente hable solo en los turnos siguientes.
+const SILENCE = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
+let unlockedPlayer = null;
+globalThis.document?.addEventListener('pointerdown', () => {
+  if (unlockedPlayer || currentAudio) return;
+  unlockedPlayer = new Audio();
+  unlockedPlayer.src = SILENCE;
+  Promise.resolve(unlockedPlayer.play()).catch(() => {});
+}, { once: true, capture: true });
+
 export function stopPlayback() {
   playbackEpoch += 1;
   speechRequest?.abort();
@@ -66,7 +77,8 @@ function playBlobAt(blob, { slow }, epoch) {
   return new Promise((resolve, reject) => {
     if (epoch !== playbackEpoch) { resolve(false); return; }
     const url = URL.createObjectURL(blob);
-    const audio = new Audio(url);
+    const audio = unlockedPlayer ?? new Audio();
+    audio.src = url;
     currentUrl = url; currentAudio = audio;
     audio.playbackRate = slow ? 0.75 : 1;
     let settled = false;
@@ -89,22 +101,45 @@ function playBlobAt(blob, { slow }, epoch) {
   });
 }
 
+// Repetir una frase no vuelve a pedirla al servidor: ahorra cuota y responde al instante.
+const speechCache = new Map();
+const SPEECH_CACHE_SIZE = 40;
+
+const speechKey = (text, persona) => `${persona?.azure ?? persona?.voice ?? ''}|${persona?.mood ?? ''}|${text}`;
+const remember = (key, blob) => {
+  speechCache.set(key, blob);
+  if (speechCache.size > SPEECH_CACHE_SIZE) speechCache.delete(speechCache.keys().next().value);
+};
+
+/** Trae la voz del próximo turno por adelantado: el cliente responde sin espera. */
+export function preloadSpeech(text, { persona = null } = {}) {
+  const key = speechKey(text, persona);
+  if (speechCache.has(key)) return;
+  fetch('/api/voice/speak', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(persona ? { text, persona } : { text }) })
+    .then(async (res) => { if (res.ok) remember(key, await res.blob()); })
+    .catch(() => {});
+}
+
 /** Detener o iniciar otra frase tambien cancela la descarga de voz anterior. */
-export async function speakCustomer(text, { slow = false, useServer = false, onFallback } = {}) {
+export async function speakCustomer(text, { slow = false, useServer = false, onFallback, persona = null } = {}) {
   stopPlayback();
   const epoch = playbackEpoch;
   if (!useServer) return speakDeviceAt(text, { slow }, epoch);
+  const cacheKey = speechKey(text, persona);
+  const cached = speechCache.get(cacheKey);
+  if (cached) return playBlobAt(cached, { slow }, epoch);
   const controller = new AbortController();
   speechRequest = controller;
   const timer = setTimeout(() => controller.abort(), 20000);
   try {
     const res = await fetch('/api/voice/speak', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text }), signal: controller.signal,
+      body: JSON.stringify(persona ? { text, persona } : { text }), signal: controller.signal,
     });
     if (epoch !== playbackEpoch) return false;
     if (!res.ok) throw new Error('speech_unavailable');
     const blob = await res.blob();
+    remember(cacheKey, blob);
     if (epoch !== playbackEpoch) return false;
     clearTimeout(timer);
     return await playBlobAt(blob, { slow }, epoch);
@@ -135,8 +170,12 @@ const MIC_ERRORS = {
   NotReadableError: { code: 'busy', message: 'Otra app está usando el micrófono. Ciérrala e inténtalo de nuevo.' },
 };
 
+const SPEECH_LEVEL = 12;
+
 export class TurnRecorder {
-  constructor({ maxMs = 60000, onAutoStop } = {}) {
+  constructor({ maxMs = 60000, onAutoStop, stopOnSilenceMs = 0, onLevel } = {}) {
+    this.stopOnSilenceMs = stopOnSilenceMs;
+    this.onLevel = onLevel;
     this.maxMs = Math.min(60000, Math.max(400, maxMs));
     this.onAutoStop = onAutoStop;
     this.stream = null; this.recorder = null; this.ctx = null;
@@ -193,7 +232,18 @@ export class TurnRecorder {
       const tick = () => {
         if (!this.active) return;
         analyser.getByteTimeDomainData(data);
-        for (const v of data) this.peak = Math.max(this.peak, Math.abs(v - 128));
+        let frame = 0;
+        for (const v of data) frame = Math.max(frame, Math.abs(v - 128));
+        this.peak = Math.max(this.peak, frame);
+        this.levelSamples = (this.levelSamples ?? 0) + 1;
+        this.onLevel?.(Math.min(1, frame / 60));
+        const clock = performance.now();
+        if (frame >= SPEECH_LEVEL) { this.spoke = true; this.lastLoud = clock; }
+        if (this.stopOnSilenceMs && this.spoke && clock - this.lastLoud > this.stopOnSilenceMs && this.onAutoStop) {
+          this.stopOnSilenceMs = 0;
+          this.onAutoStop();
+          return;
+        }
         this.raf = requestAnimationFrame(tick);
       };
       this.levelKnown = true; tick();
@@ -213,7 +263,8 @@ export class TurnRecorder {
       recorder.onstop = () => {
         const type = recorder.mimeType || this.chunks[0]?.type || 'audio/webm';
         const blob = new Blob(this.chunks, { type });
-        const silent = !blob.size || ms < 400 || (this.levelKnown && this.peak < 6);
+        // Sin muestras (pantalla en segundo plano o congelada) no se puede afirmar que hubo silencio.
+        const silent = !blob.size || ms < 400 || (this.levelKnown && (this.levelSamples ?? 0) >= 5 && this.peak < 6);
         this.release();
         this.finishStop?.({ blob, ms: Math.round(ms), silent, mimeType: type.split(';')[0] });
       };
@@ -238,6 +289,25 @@ export class TurnRecorder {
     }
     this.release();
     this.finishStop?.(null, this.recordingError);
+  }
+}
+
+/** Envía el audio para evaluar la pronunciación contra una frase que el servidor ya conoce. */
+export async function assessSpeech({ blob }, query) {
+  const { blob: wav } = await pilotWav(blob);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 40000);
+  try {
+    const res = await fetch(`/api/voz/evaluar?${new URLSearchParams(query)}`, { method: 'POST', headers: { 'Content-Type': 'audio/wav' }, body: wav, signal: controller.signal });
+    let data;
+    try { data = await res.json(); } catch { throw new ApiError(res.status, 'bad_response', 'No pudimos revisar tu voz. Inténtalo de nuevo.'); }
+    if (!res.ok) throw new ApiError(res.status, data.error, data.message);
+    return data;
+  } catch (err) {
+    if (err instanceof ApiError) throw err;
+    throw new ApiError(0, controller.signal.aborted ? 'timeout' : 'network', 'No pudimos revisar tu voz. Inténtalo de nuevo.');
+  } finally {
+    clearTimeout(timer);
   }
 }
 

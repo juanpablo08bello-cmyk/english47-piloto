@@ -1,25 +1,28 @@
-# ENGLISH47 · piloto familiar 0.4.0
+# ENGLISH47 · piloto 0.5.0
 
-La preparación del piloto empieza con un proyecto de Supabase Free. El enlace para alumnos lo dará Render después del despliegue. Cada alumno entra mediante su propia invitación. Reservar las claves para las pantallas de secretos de los proveedores.
+Cada alumno entra con su propia invitación. Las claves se guardan solo en el panel de cada proveedor.
 
-1. **Guardar progreso.** Crear un proyecto Supabase Free dedicado. Preparar su esquema privado y la conexión siguiendo POSTGRES.md. Si hay progreso anterior, importar antes de arrancar el servidor.
-2. **Abrir la práctica guiada.** Subir las fuentes a un repositorio privado, excluyendo node_modules, .env, respaldos y datos. En Render elegir Web Service Free, Node 24, compilación npm ci e inicio npm start. Usar PILOT_FREE=true, COOKIE_SECURE=true, DATABASE_URL y el secreto inicial indicados en POSTGRES.md. Revisar que el plan y la facturación del alojamiento correspondan al piloto gratuito. Canjear la invitación del administrador y generar una para el primo.
-3. **Activar la voz por turnos.** En Google AI Studio usar un proyecto dedicado Free, sin facturación activada. Comprobar que los modelos gemini-3.5-flash (audio a texto, cliente y corrección) y gemini-3.1-flash-tts-preview (lectura) estén disponibles en la cuota gratuita de esa cuenta. Si un modelo carece de cuota, dejar su capacidad apagada. Guardar GEMINI_API_KEY en Render. Marcar GEMINI_FREE_VERIFIED=true solo después de verificar lo anterior.
-4. **Repartir la cuota.** Configurar FREE_STT_CALLS_DAY, FREE_TTS_CALLS_DAY y FREE_LLM_CALLS_DAY según los límites visibles. Cero apaga esa capacidad. Si las cuotas lo permiten, para un solo alumno se puede empezar con 6 transcripciones, 6 lecturas y 8 llamadas de conversación por día (apertura, seis respuestas y evaluación). Si se usan transcripción y conversación con el mismo modelo, sumar ambas al comparar con el cupo de Google. Repeticiones y pruebas del micrófono consumen llamadas. Registrar aparte las restricciones por minuto del proveedor.
-5. **Probar en el teléfono.** Abrir Hablar y el panel de micrófono. Probar saludo, cantidades y «no onions». En Dinner for two grabar, revisar el texto y enviarlo. Comprobar que las negaciones se oyen bien y que al cerrar y abrir la página se conserva la racha. Si el servicio limita los turnos, elegir una mesa guiada. El botón de voz intenta usar la lectura del dispositivo si la generación falla.
+## Servicios
+
+| Servicio | Para qué | Plan |
+|---|---|---|
+| Render | Mantiene la app en línea | Free: se duerme sin visitas y tarda cerca de un minuto en despertar |
+| Supabase | Cuentas y progreso | Free |
+| Azure Speech | Voces, transcripción y evaluación de pronunciación | F0: 0,5 M de caracteres y 5 h al mes, con límite por minuto |
+
+## Puesta en marcha
+
+1. **Base.** Crear un proyecto Supabase Free y preparar su esquema según POSTGRES.md.
+2. **Servidor.** Web Service Free en Render, Node 24, inicio `npm start`. Variables: `PILOT_FREE=true`, `COOKIE_SECURE=true`, `DATABASE_URL`, `PG_CA_PEM`, `PUBLIC_ORIGIN` y, solo para el primer arranque, `ADMIN_INVITE_CODE`.
+3. **Voz.** Añadir `AZURE_SPEECH_KEY` y `AZURE_SPEECH_REGION`. Sin ellas la app sigue funcionando con la voz del dispositivo, sin acento, y el alumno se escucha y decide.
+4. **Probar en el teléfono.** Generar una mesa, hablar y comprobar que suene el cliente, que lleguen las estrellas y que al cerrar y abrir se conserve la racha.
 
 ## Qué hace el servidor
 
-Permite una apertura de mesa IA por alumno y día UTC y hasta seis intervenciones de alumno por mesa. Los topes adicionales por persona son ocho transcripciones, diez lecturas y diez llamadas de conversación o evaluación por día. La cuota del grupo puede ser menor. La racha sigue el calendario propio del alumno.
+Las mesas salen del generador propio, sin IA: las frases del alumno y del cliente están escritas y revisadas en `content/`. La frase contra la que se evalúa la decide el servidor. El audio se envía a Azure para revisarlo y la app no lo guarda. Los topes mensuales se ajustan por defecto al plan F0 (`LIMIT_STT_SECONDS_MONTH`, `LIMIT_TTS_CHARS_MONTH`) y cada alumno tiene 15 minutos de voz al día (`LIMIT_STT_SECONDS_USER_DAY`). Al llegar a un tope, la voz pasa a la del dispositivo y el alumno se autoevalúa. Con varios alumnos a la vez, el límite por minuto de F0 puede hacer lo mismo durante unos instantes.
 
-Una reserva se confirma en PostgreSQL antes del envío. Si Google responde con error, la reserva se consume para evitar repeticiones sin límite. Se hace una sola petición al proveedor por intento. El modo gratuito selecciona únicamente Gemini. Un cambio de plan en Google requiere revisar la configuración manualmente. Google puede usar el contenido enviado al nivel gratuito para mejorar sus productos. Practicar con situaciones ficticias.
+## Sin comprobar todavía
 
-La entrada de voz se convierte en WAV mono en el dispositivo antes de enviarse. El servidor valida formato y duración de hasta 30 segundos. La grabación para escucharse en la demo queda en el dispositivo. La transcripción editable se envía a la mesa solo al confirmarla. El evaluador analiza el texto y la intención. La pronunciación requiere una comprobación separada.
+Voz humana real, iPhone y Android (el desbloqueo de audio y el corte automático por silencio solo se probaron con audio sintético en navegador de escritorio), y revisión de las frases por un hablante nativo.
 
-## Evidencia de esta entrega
-
-149 pruebas automáticas aprobadas. El recorrido adicional por HTTP y PostgreSQL local (PGlite vía TCP) verificó la importación de una cuenta desde SQLite, el rechazo de una segunda importación, el inicio de sesión, una jornada breve, respuestas repetidas, favoritos, progreso de palabras, una mesa demo y conservación de perfil y sesión al reiniciar el servidor y la conexión. Se comprobó que la cuota sobrevivió al reinicio y que una reserva rechazada no duplicó el consumo.
-
-Las pruebas de Gemini utilizaron respuestas simuladas. Quedan pendientes las credenciales reales de Google, Render y Supabase, la comprobación de políticas y límites en las cuentas y el ensayo con iPhone y Android. La integración TTS en vista previa necesita una escucha real para comprobar naturalidad y fidelidad al pedido. Los errores previos del corrector de órdenes descritos en REVISION.md requieren una revisión independiente.
-
-Documentación oficial: [cuotas de Gemini](https://ai.google.dev/gemini-api/docs/rate-limits), [tarifas y uso de contenido](https://ai.google.dev/gemini-api/docs/pricing), [Render Free](https://render.com/docs/free), [Supabase PostgreSQL](https://supabase.com/docs/guides/database/connecting-to-postgres).
+Documentación oficial: [Azure Speech](https://learn.microsoft.com/azure/ai-services/speech-service/), [Render Free](https://render.com/docs/free), [Supabase PostgreSQL](https://supabase.com/docs/guides/database/connecting-to-postgres).

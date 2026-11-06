@@ -18,7 +18,7 @@ const newId = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${
 
 export function modeBanner(mode, voice) {
   if (mode === 'demo') {
-    return `<div class="status-mode status-demo" role="note">${icons.info}<span><b>DEMO: práctica guiada.</b> El cliente sigue un guion con respuestas de ejemplo y la corrección usa reglas automáticas. No entiende voz ni conversación libre, no es IA.</span></div>`;
+    return `<div class="status-mode status-demo" role="note">${icons.info}<span><b>Práctica guiada.</b> Escribe tu respuesta o elige un ejemplo. El cliente sigue un guion.</span></div>`;
   }
   const speech = voice?.capabilities?.speech;
   const stt = voice?.capabilities?.transcription;
@@ -78,7 +78,7 @@ export function mountSim(root, { simId, voice, onFinished, onExit }) {
     setState('playing');
     try {
       const played = await speakCustomer(text, { slow, useServer: useServerVoice(), onFallback: () => {
-        if (!destroyed && id === playId) toast('La voz IA no respondió. Usamos la voz de tu dispositivo.');
+        if (!destroyed && id === playId) toast('La voz no respondió. Usamos la de tu dispositivo.');
       } });
       if (!played && !destroyed && id === playId && state === 'playing') toast('No se pudo escuchar. Toca Escuchar otra vez o muestra el texto.');
     } finally {
@@ -136,7 +136,7 @@ export function mountSim(root, { simId, voice, onFinished, onExit }) {
     }
     if (demoRecording) {
       return `<div class="card card-hl stack">
-        <p><b>Te grabamos.</b> La demo no entiende voz: elige lo más parecido a lo que dijiste, o escríbelo.</p>
+        <p><b>Listo.</b> Aquí la app no revisa tu voz: elige lo más parecido a lo que dijiste, o escríbelo.</p>
         <button class="btn btn-help btn-block" data-play-own>${icons.sound}Escuchar mi grabación</button>
         ${sim.demoOptions.map((o) => `<button class="option" data-demo-option="${esc(o)}">${esc(o)}</button>`).join('')}
         <div class="row"><input class="input grow" data-text-input aria-label="Lo que dijiste" placeholder="O escríbelo" autocomplete="off"><button class="btn" data-send-text>Enviar</button></div>

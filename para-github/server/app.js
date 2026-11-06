@@ -1,5 +1,4 @@
 import { pilotWavSeconds } from './voice/wav.js';
-import { asLearner } from './voice/free-quota.js';
 // Servidor HTTP sin framework: rutas pequenas y explicitas, todas filtradas por usuario.
 import { createServer } from 'node:http';
 import { createReadStream, statSync } from 'node:fs';
@@ -24,6 +23,7 @@ import {
   closeAbandoned, countStoredQuotes, createSim, finishSim, hintFor, publicSim, removeStoredQuotes, rephrase, retryAttempt, setComfort, takeTurn,
 } from './sim/engine.js';
 import { checkLimit, logUsage, usageReport, voiceStatus } from './voice/index.js';
+import { currentMesa, finishImprove, finishLearn, finishMesa, generateMesa, getPlan, improveAttempt, improveHome, learnHome, mesaTurn, speechPersona, speechTarget } from './practice.js';
 import { ProviderError } from './voice/providers.js';
 import { VOCAB, VOCAB_BY_ID } from '../content/vocab.js';
 import { LESSON_BY_ID, UNITS, CATEGORIES } from '../content/units.js';
@@ -179,6 +179,7 @@ export function createApp({ db, config, services, clock = Date.now }) {
       user: userPublic(u),
       stats,
       session,
+      plan: await getPlan(db, u, now),
       greeting: hour < 12 ? 'Buenos días' : hour < 19 ? 'Buenas tardes' : 'Buenas noches',
       weekly: { goal: RULES.WEEKLY_GOAL_DAYS, done: stats.practicedThisWeek },
       voice: voiceStatus(services, config),
@@ -563,18 +564,75 @@ export function createApp({ db, config, services, clock = Date.now }) {
       throw err;
     }
   }, { raw: true });
+  // --- Práctica diaria: Aprender, Mesas y Mejorar ---
+  const practiceOut = async (user, now, out) => ({ ...out, stats: await statsFor(user, now) });
+  route('GET', '/api/aprender', async ({ user, req }) => {
+    const topic = new URL(req.url, 'http://x').searchParams.get('tema');
+    return await learnHome(db, user, clock(), topic);
+  });
+  route('POST', '/api/aprender/terminar', async ({ user }) => {
+    const now = clock();
+    return await practiceOut(user, now, fromResult(await finishLearn(db, user, now)));
+  });
+  route('GET', '/api/mesas', async ({ user }) => await currentMesa(db, user, clock()));
+  route('POST', '/api/mesas/generar', async ({ user }) => await generateMesa(db, user, clock()));
+  route('POST', '/api/mesas/:id/turno', async ({ user, params, body }) => fromResult(await mesaTurn(db, user, Number(params.id), { index: Number(body.index), heard: body.heard, selfCheck: Boolean(body.selfCheck) }, clock())));
+  route('POST', '/api/mesas/:id/terminar', async ({ user, params }) => {
+    const now = clock();
+    return await practiceOut(user, now, fromResult(await finishMesa(db, user, Number(params.id), now)));
+  });
+  route('GET', '/api/mejorar', async ({ user }) => await improveHome(db, user, clock()));
+  route('POST', '/api/mejorar/intento', async ({ user, body }) => fromResult(await improveAttempt(db, user, { index: Number(body.index), heard: body.heard, selfCheck: Boolean(body.selfCheck) }, clock())));
+  route('POST', '/api/mejorar/terminar', async ({ user }) => {
+    const now = clock();
+    return await practiceOut(user, now, fromResult(await finishImprove(db, user, now)));
+  });
+
+  // Evalúa la pronunciación contra la frase guía que el servidor tiene guardada. El audio se descarta.
+  route('POST', '/api/voz/evaluar', async ({ user, req }) => {
+    const now = clock();
+    if (!services.pronunciation) fail(409, 'assess_unavailable', 'La evaluación de pronunciación no está conectada.');
+    const query = new URL(req.url, 'http://x').searchParams;
+    const place = { tipo: query.get('tipo'), id: Number(query.get('id')), index: Number(query.get('index')) };
+    const limit = await checkLimit(db, config, user, 'stt', now);
+    if (limit) fail(429, limit.code, limit.message);
+    if (String(req.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase() !== 'audio/wav') fail(415, 'bad_audio', 'Formato de audio no compatible. Vuelve a grabar.');
+    const audio = await readBody(req, 960044);
+    const seconds = pilotWavSeconds(audio);
+    if (seconds < 0.4) fail(400, 'bad_audio', 'Graba una frase de hasta 30 segundos.');
+    const reference = await speechTarget(db, user, place, now);
+    if (!reference) fail(404, 'not_found', 'Esa frase ya no está disponible.');
+    let assessment;
+    try {
+      assessment = await services.pronunciation.assess({ audio, reference });
+      await logUsage(db, user, 'stt', services.pronunciation.name, seconds, 'seconds', now);
+    } catch (err) {
+      if (err instanceof ProviderError) {
+        if (err.code === 'rate_limited') fail(429, 'limit_reached', 'Se agotó la revisión de voz por ahora.');
+        fail(502, `provider_${err.code}`, 'No pudimos revisar tu voz. Inténtalo de nuevo.');
+      }
+      throw err;
+    }
+    if (assessment.status === 'silence') return { status: 'silence' };
+    const out = fromResult(place.tipo === 'mesa'
+      ? await mesaTurn(db, user, place.id, { index: place.index, assessment }, now)
+      : await improveAttempt(db, user, { index: place.index, assessment }, now));
+    return { status: 'ok', heard: assessment.text, result: out.result };
+  }, { raw: true });
+
   route('POST', '/api/voice/speak', async ({ user, body, res }) => {
     const now = clock();
     if (!services.tts) fail(409, 'tts_unavailable', 'La voz del servidor no está conectada.');
     const text = String(body.text ?? '').trim().slice(0, 800);
     if (!text) fail(400, 'empty', 'No hay texto para leer.');
+    const persona = speechPersona(body.persona);
     const limit = await checkLimit(db, config, user, 'tts', now);
     if (limit) fail(429, limit.code, limit.message);
     const controller = new AbortController();
     const cancel = () => { if (!res.writableEnded) controller.abort(); };
     res.on('close', cancel);
     try {
-      const { audio, mimeType } = await services.tts.speak({ text, signal: controller.signal });
+      const { audio, mimeType } = await services.tts.speak({ text, signal: controller.signal, voice: persona?.voice, style: persona?.style, azure: persona?.azure, rate: persona?.rate });
       if (res.destroyed) return;
       await logUsage(db, user, 'tts', services.tts.name, text.length, 'chars', now);
       return { audio, mimeType };
@@ -784,7 +842,7 @@ export function createApp({ db, config, services, clock = Date.now }) {
         const user = identity ? await userFromToken(db, token, clock()) : null;
         if (r.auth !== 'none' && !user) fail(401, 'not_authenticated', 'Tu sesión terminó. Vuelve a entrar.');
         if (r.auth === 'admin' && user.role !== 'admin') fail(403, 'forbidden', 'Solo para administración.');
-        return asLearner(user, () => r.handler({ req, res, user, params, body }));
+        return r.handler({ req, res, user, params, body });
       });
       if (res.destroyed) return;
       if (out?.audio && Buffer.isBuffer(out.audio)) {

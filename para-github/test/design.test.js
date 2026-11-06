@@ -16,18 +16,28 @@ function contrast(a, b) {
   return (hi + 0.05) / (lo + 0.05);
 }
 
-test('combinaciones de texto cumplen 4.5:1', () => {
-  const pairs = [
-    ['text', 'bg'], ['text-2', 'bg'], ['green-text', 'bg'], ['blue-text', 'bg'], ['ink', 'bg'],
-    ['ink', 'green'], ['amber-text', 'amber-soft'], ['blue-text', 'blue-soft'], ['ink', 'blue-soft'], ['ink', 'green-soft'],
-  ];
+test('el texto sobre el lienzo y las superficies cumple 4.5:1', () => {
+  const pairs = [['text', 'bg'], ['text-2', 'bg'], ['text', 'surface'], ['text-2', 'surface'], ['text', 'surface-2'], ['action', 'bg'], ['good', 'surface'], ['warn', 'surface']];
   for (const [fg, bg] of pairs) {
     const ratio = contrast(token(fg), token(bg));
     assert.ok(ratio >= 4.5, `${fg} sobre ${bg}: ${ratio.toFixed(2)}`);
   }
-  assert.ok(contrast('#ffffff', token('ink')) >= 7, 'accion principal: blanco sobre tinta');
 });
 
-test('el blanco sobre verde brillante queda descartado para botones', () => {
-  assert.ok(contrast('#ffffff', token('green')) < 4.5, 'por eso el boton verde usa tinta oscura');
+test('el texto negro sobre cada color de sección cumple 4.5:1', () => {
+  for (const color of ['action', 'learn', 'table', 'improve', 'pink', 'sky', 'good', 'warn']) {
+    const ratio = contrast(token('ink'), token(color));
+    assert.ok(ratio >= 4.5, `negro sobre ${color}: ${ratio.toFixed(2)}`);
+  }
+});
+
+test('las secciones de voz no ofrecen escritura y la de texto no usa audio', () => {
+  for (const file of ['mesas.js', 'mejorar.js']) {
+    const code = readFileSync(`public/js/${file}`, 'utf8');
+    assert.doesNotMatch(code, /<input|<textarea/, `${file} permite escribir`);
+  }
+  const voz = readFileSync('public/js/voz.js', 'utf8');
+  assert.doesNotMatch(voz, /<input|<textarea/);
+  const aprender = readFileSync('public/js/aprender.js', 'utf8');
+  assert.doesNotMatch(aprender, /audio\.js|voz\.js|speak|Recorder/);
 });

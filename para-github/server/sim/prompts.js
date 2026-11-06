@@ -51,6 +51,8 @@ Output:
 - criteria: every criterion id with whether it was met.`;
 }
 
+/** Reescribe solo al cliente de una mesa guiada para principiantes. Lo que dice el alumno no cambia. */
+
 export const CUSTOMER_SCHEMA = {
   type: 'object',
   additionalProperties: false,
