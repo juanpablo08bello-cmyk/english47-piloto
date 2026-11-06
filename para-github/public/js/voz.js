@@ -124,9 +124,9 @@ export function resultHtml(r, heard = '', extra = '') {
     ${starsHtml(r.stars)}
     <p class="result-title">${CHEERS[r.stars]}</p>
     ${r.stars < 3 ? `<p class="said">${r.words.map((x) => `<span class="${x.ok ? 'w-ok' : 'w-no'}">${esc(x.w)}</span>`).join(' ')}</p>` : ''}
-    ${heard && r.stars < 3 ? `<p class="heard">Se entendió: «${esc(heard)}»</p>` : ''}
+    ${heard && !r.assessed && r.stars < 3 ? `<p class="heard">Se entendió: «${esc(heard)}»</p>` : ''}
     ${extra ? `<div class="row-center">${extra}</div>` : ''}
-    ${r.tip ? `<p class="tip">${r.tip.word ? `<b>${esc(r.tip.word)}</b> ` : ''}${esc(r.tip.text)}</p>` : ''}
+    ${r.tip && r.stars < 3 ? `<p class="tip">${r.tip.word ? `<b>${esc(r.tip.word)}</b> ` : ''}${esc(r.tip.text)}</p>` : ''}
   </div>`;
 }
 
