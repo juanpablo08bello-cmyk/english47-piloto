@@ -223,6 +223,9 @@ GRANT SELECT ON english47.schema_versions TO english47_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA english47 TO english47_app;
 REVOKE INSERT, UPDATE, DELETE ON english47.schema_versions FROM english47_app;
 GRANT USAGE ON ALL SEQUENCES IN SCHEMA english47 TO english47_app;
+-- Leer las secuencias permite que pg_dump saque el respaldo diario con este mismo rol.
+GRANT SELECT ON ALL SEQUENCES IN SCHEMA english47 TO english47_app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA english47 GRANT SELECT ON SEQUENCES TO english47_app;
 COMMIT;
 
 SELECT current_setting('english47.clave_app') AS contrasena_rol_app,
