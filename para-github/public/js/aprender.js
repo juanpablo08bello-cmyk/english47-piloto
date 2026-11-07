@@ -1,6 +1,7 @@
-// Aprender: solo texto. Frase, sus palabras y un repaso tocando. Sin audio ni micrófono.
+// Aprender palabras: solo texto. Frase, sus palabras y un repaso tocando. Sin audio ni micrófono.
 import { api, esc, icons, playSfx } from './core.js';
 import { capybara } from './capybara.js';
+import { bindGuide, foldHtml, guideHtml } from './guia.js';
 
 const shuffle = (list) => {
   const out = [...list];
@@ -14,26 +15,25 @@ const shuffle = (list) => {
 export async function viewAprender(ctx) {
   const data = await api('GET', '/api/aprender');
   const pct = Math.round((data.seen / data.total) * 100);
-  ctx.shell(`<div class="page">
+  const home = ctx.shell(`<div class="page page-wide">
     <header class="hero hero-learn">
-      <div class="grow"><h1 class="display">Aprender</h1><p class="hero-count"><b>${data.seen}</b> de ${data.total} frases</p></div>
+      <div class="grow"><h1 class="display display-long">Aprender palabras</h1><p class="hero-count"><b>${Math.min(data.count, data.goal)}/${data.goal}</b> tandas hoy</p></div>
       ${capybara({ mood: 'welcome', size: 92, equipped: ctx.state.me?.equipped })}
     </header>
-    <div class="bar bar-learn"><i style="width:${pct}%"></i></div>
-    <a class="btn btn-primary btn-xl btn-block" href="#/aprender/jugar">${data.done ? 'Más frases' : 'Empezar'}</a>
-    <h2>Temas</h2>
-    <div class="topics">
-      ${data.topics.map((t, i) => `<a class="topic topic-${(i % 4) + 1}" href="#/aprender/jugar/${t.id}">
-        <b>${esc(t.title)}</b><span>${t.seen}/${t.total}</span>
-      </a>`).join('')}
+    <div class="learn-progress"><span class="spread small"><b>Frases vistas</b><span>${data.seen} de ${data.total}</span></span><div class="bar bar-learn"><i style="width:${pct}%"></i></div></div>
+    ${guideHtml('aprender', ['Toca <b>Generar frases</b>: salen 5 al azar.', 'Lee cada frase y mira qué significa cada palabra.', 'Repásalas tocando la respuesta. Aquí no se habla.', `Haz <b>${data.goal} tandas al día</b> para cumplir esta sección.`])}
+    <a class="btn btn-primary btn-xl btn-block" href="#/aprender/jugar">${icons.dice}Generar frases</a>
+    <div class="fold-list">
+      ${foldHtml({ title: 'O elige un tema', icon: icons.book, meta: `${data.topics.length} temas`, body: `<div class="topics">${data.topics.map((t, i) => `<a class="topic topic-${(i % 4) + 1}" href="#/aprender/jugar/${t.id}"><b>${esc(t.title)}</b><span>${t.seen}/${t.total}</span></a>`).join('')}</div>` })}
+      <a class="btn btn-block" href="#/palabras">${icons.words}Diccionario</a>
     </div>
-    <a class="btn btn-block" href="#/palabras">${icons.words}Diccionario</a>
   </div>`, { tab: '#/aprender' });
+  bindGuide(home);
 }
 
 export async function viewAprenderJugar(ctx, topic) {
-  const data = await api('GET', `/api/aprender${topic ? `?tema=${encodeURIComponent(topic)}` : ''}`);
-  const main = ctx.shell('', { focus: true, section: 'learn' });
+  const main = ctx.shell('<div class="stage center"><span class="spinner spinner-lg"></span></div>', { focus: true, section: 'learn' });
+  const data = await api('POST', '/api/aprender/generar', topic ? { tema: topic } : {});
   const { pack } = data;
   const steps = [];
   // Primero se aprende cada frase; después se repasa tocando, sin examen ni castigo.
@@ -145,12 +145,22 @@ export async function viewAprenderJugar(ctx, topic) {
     if (finishing) return; // Un doble toque no repite la celebración.
     finishing = true;
     main.innerHTML = '<div class="stage center"><span class="spinner spinner-lg"></span></div>';
+    let today = '';
     try {
       const out = await api('POST', '/api/aprender/terminar');
+      if (!out.plan.learn.done) today = `${out.plan.learn.count}/${out.plan.learn.goal} hoy`;
       ctx.state.stats = out.stats;
-      ctx.reward(out.rewards, { title: '¡Frases aprendidas!', fallback: `${pack.length} frases más` });
+      if (out.rewards.xp || out.rewards.coins) ctx.reward(out.rewards, { title: '¡Frases aprendidas!', fallback: 'Sigue así' });
     } catch (err) { ctx.toast(err.message); }
-    location.hash = '#/hoy';
+    playSfx('great');
+    main.innerHTML = `<div class="stage center">
+        ${capybara({ mood: 'welcome', size: 120, equipped: ctx.state.me?.equipped })}
+        <h1 class="phrase phrase-sm">¡${pack.length} frases más!</h1>
+        ${today ? `<p class="hero-count"><b>${today}</b></p>` : ''}
+      </div>
+      <button class="btn btn-primary btn-xl btn-block" id="more">${icons.dice}Generar más</button>
+      <a class="btn btn-block" href="#/aprender">Salir</a>`;
+    main.querySelector('#more').addEventListener('click', () => viewAprenderJugar(ctx, topic));
   };
 
   draw();

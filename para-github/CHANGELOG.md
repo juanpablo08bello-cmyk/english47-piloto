@@ -1,5 +1,31 @@
 # Registro de cambios
 
+## 1.0.0
+
+- Temporada nueva: todo el juego empieza desde cero para todas las cuentas (racha, XP, monedas, propinas, mesas, dificultad, frases vistas, logros, compras y protectores). Se quedan las cuentas y no se borran datos.
+- Más azar: la memoria de lo visto dura entre días y Aprender da primero frases nuevas.
+- Propinas: cada estrella es $1 y la mesa perfecta suma $5. Se guardan como monedas para la Tienda.
+- Tienda: 8 animales además de la capibara, y ropa, sombreros, lentes y accesorios de cuello, por categorías y con probador. Toda cuenta empieza con la capibara.
+- Ranking con la mascota de cada participante.
+- Menos botones: una acción principal por pantalla; repetir, oírse y saltar quedan como acciones pequeñas.
+- Pantalla de novedades, una sola vez.
+
+## 0.9.0-piloto
+
+- La racha pide completar el mismo día 2 tandas de frases, 2 mesas y 6 audios o situaciones. Se paga al llegar a cada meta.
+- Calificación de 5 estrellas y propina de máximo $12 por mesa. Las propinas ya ganadas no cambian.
+- Mesas: flecha del cliente a tu turno; unos turnos muestran la frase en inglés y otros se responden solos, con pista. Las dos primeras mesas guían todo.
+- Explicaciones de primera vez en cada sección, con flechas, que quedan a un toque en "¿Cómo funciona?".
+- Nivel de la cuenta por XP, con barra y nombre: arriba, en Hoy, en Perfil y en la barra lateral. Cada nivel pide más XP que el anterior. La dificultad de Mesas se llama ahora Dificultad.
+- Rediseño: Tienda y Ranking en el menú, secciones desplegables, calendario por semanas, podio, versión de PC con barra lateral y más animación.
+- Ranking por racha y por propinas con todas las cuentas activas, también la que administra.
+- Con una versión nueva abierta en el teléfono, la siguiente navegación recarga sola.
+- Pestañas renombradas: Aprender palabras; Pronunciar y escuchar.
+- 214 frases nuevas (414 en total), con pronunciación.
+- Aprender palabras: el botón genera tandas al azar de todos los temas, sin fin.
+- Escuchar: audios al azar con voces de distintos países; se oyen sin ver el texto y se repiten.
+- Pronunciar: se lee lo que dice un cliente o una situación y se responde con palabras propias, con guía y pista opcional. Se evalúa la pronunciación de lo dicho y se revisa por palabras clave si responde.
+
 ## 0.5.3-piloto (2026-11-06)
 
 - La grabación ya no pierde el inicio de la voz: "Habla ahora" solo aparece cuando se está grabando, se espera a que el micrófono entregue sonido y se quitan los filtros de eco y ruido, que al arrancar recortan las primeras sílabas.

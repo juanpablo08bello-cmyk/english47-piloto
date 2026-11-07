@@ -59,6 +59,8 @@ export const icons = {
   talk: stroke('<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>'),
   words: stroke('<path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5M9 8h6M9 12h4"/>'),
   profile: stroke('<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>'),
+  store: stroke('<path d="M4 9l1.500-5h13L20 9M4 9a2.700 2.700 0 0 0 5.300.500A2.700 2.700 0 0 0 12 9a2.700 2.700 0 0 0 2.700.500A2.700 2.700 0 0 0 20 9M5.500 12v8h13v-8M10 20v-5h4v5"/>'),
+  dice: stroke('<rect x="4" y="4" width="16" height="16" rx="4"/><path d="M9 9h.01M15 9h.01M12 12h.01M9 15h.01M15 15h.01"/>'),
   check: stroke('<path d="M5 13l4 4L19 7"/>'),
   review: stroke('<path d="M12 8v5M12 17h.01"/><circle cx="12" cy="12" r="9"/>'),
   close: stroke('<path d="M6 6l12 12M18 6L6 18"/>'),

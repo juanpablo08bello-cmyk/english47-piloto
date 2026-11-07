@@ -37,7 +37,7 @@ export const MOODS = {
 const FEMALE = ['Kore', 'Aoede', 'Leda', 'Zephyr'];
 const MALE = ['Puck', 'Charon', 'Orus', 'Fenrir'];
 const person = (name, gender, accent, azure, i) => ({ name, accent, azure, voice: (gender === 'f' ? FEMALE : MALE)[i % 4] });
-const CAST = [
+export const CAST = [
   ['Linda', 'f', 'us', 'en-US-AvaNeural'], ['Mike', 'm', 'us', 'en-US-AndrewNeural'], ['Grace', 'f', 'us', 'en-US-JennyNeural'],
   ['Tony', 'm', 'us', 'en-US-GuyNeural'], ['Emma', 'f', 'us', 'en-US-EmmaNeural'], ['Brian', 'm', 'us', 'en-US-BrianNeural'],
   ['Aria', 'f', 'us', 'en-US-AriaNeural'], ['Davis', 'm', 'us', 'en-US-DavisNeural'], ['Nancy', 'f', 'us', 'en-US-NancyNeural'],
@@ -391,7 +391,7 @@ export const SCENE_IDS = SCENES.map((s) => s.id);
 export const mesaKey = (m) => `${m.scene}|${m.persona.name}`;
 /** Devuelve situaciones y personas de mesas recientes para no repetirlas enseguida. */
 export const recentFrom = (keys) => ({
-  avoidScenes: keys.slice(0, 4).map((k) => k.split('|')[0]),
+  avoidScenes: keys.slice(0, 6).map((k) => k.split('|')[0]),
   avoidNames: keys.map((k) => k.split('|')[1]),
 });
 

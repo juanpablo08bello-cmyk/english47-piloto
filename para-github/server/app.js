@@ -11,7 +11,7 @@ import {
 import { addDays, isValidTimeZone, localDate, localHour } from './dates.js';
 import { tx } from './db.js';
 import {
-  ACHIEVEMENTS, balance, buyItem, calendar, nextReward, reconcileShields, RULES, SHOP_ITEMS, streakStats,
+  ACHIEVEMENTS, award, balance, buyItem, calendar, grantAchievement, nextReward, ownedItems, readEquipped, reconcileShields, RULES, SHOP_ITEMS, streakStats, writeEquipped, xpLevel,
 } from './progress.js';
 import {
   answerExercise, finishTalkStep, getSession, linkSimulation, markCardsSeen, noteTalkTurn, publicSession, startBrief,
@@ -23,8 +23,9 @@ import {
   closeAbandoned, countStoredQuotes, createSim, finishSim, hintFor, publicSim, removeStoredQuotes, rephrase, retryAttempt, setComfort, takeTurn,
 } from './sim/engine.js';
 import { checkLimit, logUsage, usageReport, voiceStatus } from './voice/index.js';
-import { currentMesa, finishImprove, finishLearn, finishMesa, generateMesa, getPlan, improveAttempt, improveHome, learnHome, mesaProgress, mesaTurn, speechPersona, speechTarget } from './practice.js';
+import { currentMesa, finishLearn, finishMesa, generateImprove, generateLearn, generateMesa, getPlan, improveAttempt, improveHome, leaderboard, learnHome, mesaProgress, mesaTurn, speechPersona, speechTarget } from './practice.js';
 import { ProviderError } from './voice/providers.js';
+import { seasonGift, seasonKey, seasonStart } from './season.js';
 import { VOCAB, VOCAB_BY_ID } from '../content/vocab.js';
 import { LESSON_BY_ID, UNITS, CATEGORIES } from '../content/units.js';
 import { SCENARIOS, SCENARIO_BY_ID } from '../content/scenarios.js';
@@ -105,7 +106,7 @@ export function createApp({ db, config, services, clock = Date.now }) {
     return {
       id: u.id, username: u.username, displayName: u.display_name, role: u.role, timezone: u.timezone,
       helpMode: u.help_mode, soundOn: Boolean(u.sound_on), keepTranscripts: Boolean(u.keep_transcripts),
-      equipped: JSON.parse(u.equipped), placementUnit: u.placement_unit, placementSource: u.placement_source, dailyNew: u.daily_new, diagnosticStatus: u.diagnostic_status,
+      equipped: readEquipped(u.equipped), placementUnit: u.placement_unit, placementSource: u.placement_source, dailyNew: u.daily_new, diagnosticStatus: u.diagnostic_status,
       diagnosticResult: u.diagnostic_result ? JSON.parse(u.diagnostic_result) : null,
     };
   }
@@ -121,7 +122,7 @@ export function createApp({ db, config, services, clock = Date.now }) {
     const { shields } = await db.prepare('SELECT shields FROM users WHERE id=?').get(user.id);
     let earnedXp = 0;
     let earnedCoins = 0;
-    for (const e of await db.prepare('SELECT xp, coins, created_at FROM reward_events WHERE user_id=?').all(user.id)) {
+    for (const e of await db.prepare('SELECT xp, coins, created_at FROM reward_events WHERE user_id=? AND created_at>=?').all(user.id, seasonStart())) {
       if (localDate(Date.parse(e.created_at), user.timezone) === today) {
         earnedXp += e.xp;
         if (e.coins > 0) earnedCoins += e.coins;
@@ -129,7 +130,10 @@ export function createApp({ db, config, services, clock = Date.now }) {
     }
     const tomorrow = addDays(today, 1);
     const dueTomorrow = (await db.prepare('SELECT COUNT(*) n FROM vocab_progress WHERE user_id=? AND due_date<=?').get(user.id, tomorrow)).n;
-    return { ...stats, ...await balance(db, user.id), shields, shieldsJustUsed: covered, today, nextReward: nextReward(stats), earnedToday: { xp: earnedXp, coins: earnedCoins }, dueTomorrow };
+    const gift = seasonGift(user);
+    if (gift) await award(db, user.id, seasonKey('regalo'), { coins: gift }, now);
+    const totals = await balance(db, user.id);
+    return { ...stats, ...totals, xpLevel: xpLevel(totals.xp), shields, shieldsJustUsed: covered, today, nextReward: nextReward(stats), earnedToday: { xp: earnedXp, coins: earnedCoins }, dueTomorrow };
   }
 
   // --- Acceso ---
@@ -308,7 +312,7 @@ export function createApp({ db, config, services, clock = Date.now }) {
         `INSERT INTO lesson_answers (user_id, lesson_id, idx, correct, result, answer_hash) VALUES (?,?,?,?,?,?)
          ON CONFLICT(user_id, lesson_id, idx) DO UPDATE SET correct = CASE WHEN lesson_answers.correct > excluded.correct THEN lesson_answers.correct ELSE excluded.correct END, result = excluded.result, answer_hash = excluded.answer_hash`,
       ).run(user.id, lesson.id, index, result.correct ? 1 : 0, JSON.stringify(saved), hash);
-      if (prev && result.meaningful) await db.prepare('INSERT INTO achievements (user_id, key, created_at) VALUES (?,?,?) ON CONFLICT DO NOTHING').run(user.id, 'retried_phrase', new Date(now).toISOString());
+      if (prev && result.meaningful) await grantAchievement(db, user.id, 'retried_phrase', now);
       return { result: saved };
     });
   });
@@ -609,16 +613,15 @@ export function createApp({ db, config, services, clock = Date.now }) {
       throw err;
     }
   }, { raw: true });
-  // --- Práctica diaria: Aprender, Mesas y Mejorar ---
+  // --- Práctica diaria: Aprender palabras, Mesas, Pronunciar y escuchar ---
   const practiceOut = async (user, now, out) => ({ ...out, stats: await statsFor(user, now) });
-  route('GET', '/api/aprender', async ({ user, req }) => {
-    const topic = new URL(req.url, 'http://x').searchParams.get('tema');
-    return await learnHome(db, user, clock(), topic);
-  });
+  route('GET', '/api/aprender', async ({ user }) => await learnHome(db, user, clock()));
+  route('POST', '/api/aprender/generar', async ({ user, body }) => await generateLearn(db, user, clock(), body.tema ? String(body.tema) : null));
   route('POST', '/api/aprender/terminar', async ({ user }) => {
     const now = clock();
     return await practiceOut(user, now, fromResult(await finishLearn(db, user, now)));
   });
+  route('GET', '/api/ranking', async ({ user }) => await leaderboard(db, user, clock()));
   route('GET', '/api/mesas', async ({ user }) => await currentMesa(db, user, clock()));
   route('POST', '/api/mesas/generar', async ({ user }) => await generateMesa(db, user, clock()));
   route('POST', '/api/mesas/:id/turno', async ({ user, params, body }) => fromResult(await mesaTurn(db, user, Number(params.id), { index: Number(body.index), heard: body.heard, selfCheck: Boolean(body.selfCheck) }, clock())));
@@ -627,10 +630,12 @@ export function createApp({ db, config, services, clock = Date.now }) {
     return await practiceOut(user, now, fromResult(await finishMesa(db, user, Number(params.id), now)));
   });
   route('GET', '/api/mejorar', async ({ user }) => await improveHome(db, user, clock()));
-  route('POST', '/api/mejorar/intento', async ({ user, body }) => fromResult(await improveAttempt(db, user, { index: Number(body.index), heard: body.heard, selfCheck: Boolean(body.selfCheck) }, clock())));
-  route('POST', '/api/mejorar/terminar', async ({ user }) => {
+  route('POST', '/api/mejorar/generar', async ({ user, body }) => await generateImprove(db, user, body.modo === 'escuchar' ? 'escuchar' : 'pronunciar', clock()));
+  route('POST', '/api/mejorar/intento', async ({ user, body }) => {
     const now = clock();
-    return await practiceOut(user, now, fromResult(await finishImprove(db, user, now)));
+    const out = fromResult(await improveAttempt(db, user, { id: Number(body.id), heard: body.heard, selfCheck: Boolean(body.selfCheck) }, now));
+    if (out.daily) out.daily.stats = await statsFor(user, now);
+    return out;
   });
 
   // Evalúa la pronunciación contra la frase guía que el servidor tiene guardada. El audio se descarta.
@@ -646,7 +651,7 @@ export function createApp({ db, config, services, clock = Date.now }) {
     const seconds = pilotWavSeconds(audio);
     if (seconds < 0.4) fail(400, 'bad_audio', 'Graba una frase de hasta 30 segundos.');
     const reference = await speechTarget(db, user, place, now);
-    if (!reference) fail(404, 'not_found', 'Esa frase ya no está disponible.');
+    if (reference === null) fail(404, 'not_found', 'Esa frase ya no está disponible.');
     let assessment;
     try {
       assessment = await services.pronunciation.assess({ audio, reference });
@@ -661,8 +666,9 @@ export function createApp({ db, config, services, clock = Date.now }) {
     if (assessment.status === 'silence') return { status: 'silence' };
     const out = fromResult(place.tipo === 'mesa'
       ? await mesaTurn(db, user, place.id, { index: place.index, assessment }, now)
-      : await improveAttempt(db, user, { index: place.index, assessment }, now));
-    return { status: 'ok', heard: assessment.text, result: out.result };
+      : await improveAttempt(db, user, { id: place.id, assessment }, now));
+    if (out.daily) out.daily.stats = await statsFor(user, now);
+    return { status: 'ok', heard: assessment.text, result: out.result, attempts: out.attempts ?? null, daily: out.daily ?? null };
   }, { raw: true });
 
   route('POST', '/api/voice/speak', async ({ user, body, res }) => {
@@ -693,8 +699,8 @@ export function createApp({ db, config, services, clock = Date.now }) {
     const now = clock();
     const stats = await statsFor(user, now);
     const u = await fresh(user);
-    const earned = new Map((await db.prepare('SELECT key, created_at FROM achievements WHERE user_id=?').all(u.id)).map((a) => [a.key, a.created_at]));
-    const unlocked = new Set((await db.prepare('SELECT item_id id FROM unlocks WHERE user_id=?').all(u.id)).map((r) => r.id));
+    const earned = new Map((await db.prepare('SELECT key, created_at FROM achievements WHERE user_id=? AND created_at>=?').all(u.id, seasonStart())).map((a) => [a.key, a.created_at]));
+    const unlocked = await ownedItems(db, u.id);
     const evidence = await db.prepare('SELECT task, COUNT(*) n FROM task_evidence WHERE user_id=? GROUP BY task').all(u.id);
     const counts = Object.fromEntries(evidence.map((e) => [e.task, e.n]));
     const comfort = await db.prepare('SELECT comfort, finished_at FROM sim_sessions WHERE user_id=? AND comfort IS NOT NULL ORDER BY id DESC LIMIT 5').all(u.id);
@@ -753,18 +759,19 @@ export function createApp({ db, config, services, clock = Date.now }) {
     return { ...r, stats: await statsFor(user, clock()) };
   });
   route('POST', '/api/avatar/equip', async ({ user, body }) => {
+    if (body.slot && !['vest', 'hat', 'glasses', 'neck', 'animal'].includes(body.slot)) fail(400, 'unknown_item', 'Ese accesorio no existe.');
     const item = SHOP_ITEMS.find((i) => i.id === body.itemId && i.kind !== 'shield');
     const u = await fresh(user);
-    const equipped = JSON.parse(u.equipped);
+    const equipped = readEquipped(u.equipped);
     if (body.slot && !body.itemId) {
       delete equipped[body.slot];
     } else {
       if (!item) fail(400, 'unknown_item', 'Ese accesorio no existe.');
-      const owned = await db.prepare('SELECT 1 FROM unlocks WHERE user_id=? AND item_id=?').get(u.id, item.id);
+      const owned = (await ownedItems(db, u.id)).has(item.id);
       if (!owned) fail(403, 'not_owned', 'Todavía no tienes ese accesorio.');
       equipped[item.kind] = item.id;
     }
-    await db.prepare('UPDATE users SET equipped=? WHERE id=?').run(JSON.stringify(equipped), u.id);
+    await db.prepare('UPDATE users SET equipped=? WHERE id=?').run(writeEquipped(equipped), u.id);
     return { equipped };
   });
   route('POST', '/api/challenge/log', async ({ user, body }) => {

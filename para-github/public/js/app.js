@@ -1,4 +1,4 @@
-// Enrutador y pantallas. Navegacion inferior: Hoy, Aprender, Mesas, Mejorar y Perfil.
+// Enrutador y pantallas. Menú: Hoy, Aprender palabras, Mesas, Pronunciar y escuchar, Ranking, Tienda y Perfil.
 import { api, ApiError, chime, confetti, esc, icons, newRequestId, plural, setSound, statIcons, toast } from './core.js';
 import { capybara } from './capybara.js';
 import { deviceVoiceAvailable, speakDevice, stopPlayback } from './audio.js';
@@ -7,6 +7,9 @@ import { viewAprender, viewAprenderJugar } from './aprender.js';
 import { viewMesas, viewMesaAtender } from './mesas.js';
 import { pronNote } from './voz.js';
 import { viewMejorar, viewMejorarJugar } from './mejorar.js';
+import { viewRanking } from './ranking.js';
+import { viewTienda } from './tienda.js';
+import { bindGuide, foldHtml, guideHtml, guideSeen, markGuide } from './guia.js';
 import { modeBanner, mountSim } from './sim.js';
 import { mountVoiceLab } from './voice-lab.js';
 
@@ -18,9 +21,11 @@ let renderToken = 0;
 
 const TABS = [
   { hash: '#/hoy', label: 'Hoy', icon: icons.today },
-  { hash: '#/aprender', label: 'Aprender', icon: icons.book },
+  { hash: '#/aprender', label: 'Aprender palabras', icon: icons.book },
   { hash: '#/mesas', label: 'Mesas', icon: icons.plate },
-  { hash: '#/mejorar', label: 'Mejorar', icon: icons.talk },
+  { hash: '#/mejorar', label: 'Pronunciar y escuchar', icon: icons.talk },
+  { hash: '#/ranking', label: 'Ranking', icon: icons.trophy },
+  { hash: '#/tienda', label: 'Tienda', icon: icons.store },
   { hash: '#/perfil', label: 'Perfil', icon: icons.profile },
 ];
 
@@ -33,30 +38,78 @@ const outcomeChip = (o) => (OUTCOMES[o] ? `<span class="chip ${OUTCOMES[o].cls}"
 const DIFFICULTY = { 1: 'Básico', 2: 'Intermedio', 3: 'Avanzado' };
 const UNIT_NAMES = { 1: 'Recibir y acomodar', 2: 'Bebidas', 3: 'Explicar el menú', 4: 'Tomar la orden', 5: 'Alergias y restricciones', 6: 'Durante el servicio', 7: 'Resolver problemas', 8: 'Cerrar la mesa' };
 
+const xpBar = (lv, cls = '') => `<span class="xp-bar ${cls}" role="progressbar" aria-valuenow="${lv.into}" aria-valuemin="0" aria-valuemax="${lv.need}" aria-label="XP para el siguiente nivel"><i style="width:${lv.pct}%"></i></span>`;
+
+/** Lo de arriba a la derecha: racha, nivel con su XP y monedas. Al tocarlo se despliega qué es cada cosa. */
 function statsBar() {
   const s = state.stats;
   if (!s) return '';
-  return `<div class="stats" aria-label="Tu progreso">
-    <span class="stat" title="Racha">${statIcons.flame}<span>${s.current}<span class="sr"> ${s.current === 1 ? 'día' : 'días'} de racha</span></span></span>
-    <span class="stat" title="XP">${statIcons.xp}${s.xp}</span>
-    <span class="stat" title="Monedas">${statIcons.coin}${s.coins}</span>
+  const lv = s.xpLevel;
+  return `<div class="stats-wrap">
+    <button class="stats" type="button" id="stats-toggle" aria-expanded="false" aria-controls="stats-menu" aria-label="Ver tu racha, tu nivel y tus monedas">
+      <span class="stat">${statIcons.flame}${s.current}</span>
+      ${lv ? `<span class="stat stat-xp">${statIcons.xp}<span class="stat-xp-body"><span class="stat-xp-label">Nivel ${lv.level} · ${lv.xp} XP</span>${xpBar(lv)}</span></span>` : ''}
+      <span class="stat">${statIcons.coin}${s.coins}</span>
+    </button>
+    <div class="stats-menu" id="stats-menu" hidden>
+      <div class="stats-line">${statIcons.flame}<div><b>Racha: ${plural(s.current, 'día', 'días')}</b><small>Completa las tres secciones cada día para que suba.</small></div></div>
+      ${lv ? `<div class="stats-line">${statIcons.xp}<div class="grow"><b>Nivel ${lv.level}: ${esc(lv.name)}</b><small>El rayo es tu XP. Te faltan <b>${lv.left} XP</b> para el nivel ${lv.level + 1}.</small>${xpBar(lv, 'xp-bar-lg')}<small class="xp-numbers">${lv.into} / ${lv.need} XP</small></div></div>` : ''}
+      <a class="stats-line" href="#/tienda">${statIcons.coin}<div><b>${plural(s.coins, 'moneda', 'monedas')}</b><small>Las ganas con propinas y se gastan en la Tienda. Toca para ir.</small></div></a>
+    </div>
   </div>`;
 }
 
+let lastLevel = null;
+
 function shell(content, { tab = null, focus = false } = {}) {
-  const tabs = TABS.map((t) => `<a class="tab ${tab === t.hash ? 'active' : ''}" href="${t.hash}" ${tab === t.hash ? 'aria-current="page"' : ''}><span class="tab-icon">${t.icon}</span>${t.label}</a>`).join('');
-  app.innerHTML = `<div class="shell ${focus ? '' : 'with-tabs'}">
-    ${focus ? '' : `<header class="topbar"><a class="brand" href="#/hoy" style="text-decoration:none">ENGLISH<b>47</b></a>${statsBar()}</header>`}
+  const lv = state.stats?.xpLevel;
+  // Las pantallas nuevas siempre usan el look actual; cada vista lo recibe de state.me.
+  const tabs = TABS.map((t) => `<a class="tab tab-${t.hash.slice(2)} ${tab === t.hash ? 'active' : ''}" href="${t.hash}" ${tab === t.hash ? 'aria-current="page"' : ''}><span class="tab-icon">${t.icon}</span><span class="tab-label">${t.label}</span></a>`).join('');
+  app.innerHTML = `<div class="shell ${focus ? 'shell-focus' : 'with-tabs'}">
+    ${focus ? '' : `<header class="topbar"><a class="brand" href="#/hoy">ENGLISH<b>47</b></a>${statsBar()}</header>`}
     <main class="content ${focus ? 'focus' : ''}" id="main">${content}</main>
-    ${focus ? '' : `<nav class="tabbar" aria-label="Principal">${tabs}</nav>`}
+    ${focus ? '' : `<nav class="tabbar" aria-label="Principal">
+      <a class="side-brand brand" href="#/hoy">ENGLISH<b>47</b></a>
+      <div class="tab-list">${tabs}</div>
+      ${lv ? `<a class="side-xp" href="#/perfil">${statIcons.xp}<span class="grow"><b>Nivel ${lv.level}</b><small>${esc(lv.name)} · faltan ${lv.left} XP</small>${xpBar(lv)}</span></a>` : ''}
+    </nav>`}
   </div>`;
   window.scrollTo(0, 0);
+  const toggle = document.getElementById('stats-toggle');
+  if (toggle) {
+    const menu = document.getElementById('stats-menu');
+    toggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      menu.hidden = !menu.hidden;
+      toggle.setAttribute('aria-expanded', String(!menu.hidden));
+    });
+    menu.addEventListener('click', (e) => e.stopPropagation());
+  }
+  // Se celebra al volver al menú, sin interrumpir el ejercicio que acaba de terminar.
+  if (lv && !focus) {
+    if (lastLevel && lv.level > lastLevel) {
+      playLevelUp(lv);
+    }
+    lastLevel = lv.level;
+  }
   return document.getElementById('main');
 }
 
+function playLevelUp(lv) {
+  celebrate({ title: `¡Subiste al nivel ${lv.level}!`, lines: [lv.name, `Próximo nivel en ${lv.left} XP`] });
+}
+
+document.addEventListener('click', () => {
+  const menu = document.getElementById('stats-menu');
+  if (menu && !menu.hidden) {
+    menu.hidden = true;
+    document.getElementById('stats-toggle')?.setAttribute('aria-expanded', 'false');
+  }
+});
+
 // --- Comentarios: se abre encima de la pantalla, sin perder lo que estabas escribiendo. ---
 const FEEDBACK_SECTION = [
-  [/^#\/aprender/, 'Aprender'], [/^#\/mesas/, 'Mesas'], [/^#\/mejorar/, 'Mejorar'], [/^#\/(ruta|leccion|repaso)/, 'Ruta'],
+  [/^#\/aprender/, 'Aprender palabras'], [/^#\/mesas/, 'Mesas'], [/^#\/ranking/, 'Ranking'], [/^#\/tienda/, 'Tienda'], [/^#\/mejorar/, 'Pronunciar y escuchar'], [/^#\/(ruta|leccion|repaso)/, 'Ruta'],
   [/^#\/(hablar|preparar|sim)/, 'Hablar'], [/^#\/(palabras|palabra|practicar)/, 'Palabras'], [/^#\/perfil/, 'Perfil'], [/^#\/hoy/, 'Hoy'],
 ];
 
@@ -103,12 +156,15 @@ document.addEventListener('click', (e) => {
   if (e.target.closest?.('[data-report]')) openFeedback().catch((err) => toast(err.message));
 });
 
+// Con una versión nueva, la siguiente navegación recarga sola para no mezclar pantallas viejas con el servidor nuevo.
+let updateReady = false;
 window.addEventListener('e47:update', () => {
+  updateReady = true;
   if (overlay.querySelector('.update-bar')) return;
   const bar = document.createElement('div');
   bar.className = 'update-bar';
   bar.setAttribute('role', 'status');
-  bar.innerHTML = '<span>Hay una versión nueva. Tu progreso está guardado.</span><button class="btn btn-sm">Actualizar</button>';
+  bar.innerHTML = '<span>🎉 ¡ENGLISH47 se actualizó! Mira lo nuevo.</span><button class="btn btn-sm">¡Verlo!</button>';
   bar.querySelector('button').addEventListener('click', () => location.reload());
   overlay.append(bar);
 });
@@ -118,12 +174,12 @@ function viewWelcome() {
   const main = shell(`<div class="stage center">
     ${capybara({ mood: 'welcome', size: 150, equipped: state.me?.equipped })}
     <h1 class="display">Hola${state.me ? `, ${esc(state.me.displayName)}` : ''}</h1>
-    <div class="row-center">
-      <span class="chip chip-learn-on">Aprende</span>
-      <span class="chip chip-table">Atiende</span>
-      <span class="chip chip-xp-on">Mejora</span>
-    </div>
-    <p class="muted">Te guiamos paso a paso.</p>
+    <p class="muted">Practica inglés para atender clientes en 3 pasos:</p>
+    <ol class="guide-steps guide-welcome">
+      <li><b>Aprende</b> frases y sus palabras.</li>
+      <li><b>Atiende mesas</b> hablando con clientes.</li>
+      <li><b>Entrena</b> tu pronunciación y tu oído.</li>
+    </ol>
   </div>
   <button class="btn btn-primary btn-xxl btn-block" id="go">Empezar</button>`, { focus: true });
   main.querySelector('#go').addEventListener('click', async () => {
@@ -366,9 +422,9 @@ async function viewDiagnostic(autoStart) {
 
 // --- Hoy ---
 const TODAY_STEPS = [
-  { key: 'learn', cls: 'today-learn', href: '#/aprender', title: 'Aprender', sub: 'Frases y palabras' },
-  { key: 'tables', cls: 'today-tables', href: '#/mesas', title: 'Mesas', sub: 'Atiende hablando' },
-  { key: 'improve', cls: 'today-improve', href: '#/mejorar', title: 'Mejorar', sub: 'Pronuncia y escucha' },
+  { key: 'learn', cls: 'today-learn', href: '#/aprender', title: 'Aprender palabras', sub: 'Lee frases y practícalas', unit: 'tandas' },
+  { key: 'tables', cls: 'today-tables', href: '#/mesas', title: 'Mesas', sub: 'Atiende clientes hablando', unit: 'mesas' },
+  { key: 'improve', cls: 'today-improve', href: '#/mejorar', title: 'Pronunciar y escuchar', sub: 'Entrena tu voz y tu oído', unit: 'audios o respuestas' },
 ];
 
 async function viewToday() {
@@ -377,32 +433,70 @@ async function viewToday() {
   setSound(today.user.soundOn);
   if (today.user.role === 'student' && today.user.diagnosticStatus === 'pending') { location.hash = '#/bienvenida'; return; }
   const { stats, plan, weekly, mesas } = today;
+  const lv = stats.xpLevel;
   const mood = plan.allDone ? 'celebrate' : plan.doneCount ? 'cheer' : 'welcome';
-  const steps = TODAY_STEPS.map((step, i) => {
-    const done = plan[step.key].done;
+  const steps = TODAY_STEPS.map((step) => {
+    const s = plan[step.key];
+    const pct = Math.min(100, Math.round((s.count / s.goal) * 100));
     return `<a class="today-step ${step.cls} ${plan.next === step.key ? 'is-next' : ''}" href="${step.href}">
-      <span class="num">${done ? icons.check : i + 1}</span>
-      <span class="grow"><b>${step.title}</b><small>${step.key === 'tables' && mesas?.done ? `Nivel ${mesas.level} · ${mesas.tips} en propinas` : step.sub}</small></span>
+      <span class="ring ${s.done ? 'ring-done' : ''}" style="--p:${pct}">${s.done ? icons.check : `${Math.min(s.count, s.goal)}/${s.goal}`}</span>
+      <span class="grow">
+        <b>${step.title}</b>
+        <small>${step.key === 'tables' && mesas?.done ? `Dificultad ${mesas.level} · $${mesas.tips} en propinas` : step.sub}</small>
+        <span class="step-tags"><span class="step-tag">${s.done ? 'Cumplido hoy' : `Meta: ${s.goal} ${step.unit}`}</span><span class="step-tag">${statIcons.xp}+${s.xp} XP</span></span>
+      </span>
     </a>`;
   }).join('');
-  shell(`<div class="page">
+  const main = shell(`<div class="page page-wide">
     <header class="hero hero-today">
       <div class="grow">
         <h1 class="display">Hola, ${esc(today.user.displayName)}</h1>
-        <p class="streak">${statIcons.flame}${stats.current ? plural(stats.current, 'día', 'días') : 'Tu primer día'}</p>
+        <p class="streak">${statIcons.flame}${stats.current ? plural(stats.current, 'día de racha', 'días de racha') : 'Empieza tu racha hoy'}</p>
       </div>
-      ${capybara({ mood, size: 92, equipped: today.user.equipped })}
+      ${capybara({ mood, size: 96, equipped: today.user.equipped })}
     </header>
+    ${lv ? `<a class="level-card" href="#/perfil">
+      <span class="level-badge">${lv.level}</span>
+      <span class="grow"><span class="spread"><b>${esc(lv.name)}</b><small>${lv.into} / ${lv.need} XP</small></span>${xpBar(lv, 'xp-bar-lg')}</span>
+    </a>` : ''}
+    ${guideHtml('hoy', ['Haz las <b>tres secciones</b> de abajo, en el orden que quieras. El círculo dice cuánto llevas.', 'Al cumplirlas sumas <b>1 día de racha</b> y 20 monedas.', `Cada sección da ${statIcons.xp} <b>XP</b> para subir de nivel. Toca arriba a la derecha para ver tu progreso.`])}
     ${stats.shieldsJustUsed?.length ? '<p class="notice small">Un protector salvó tu racha.</p>' : ''}
     ${stats.interrupted ? '<p class="notice small">Tu progreso sigue aquí. Retomemos hoy.</p>' : ''}
-    ${steps}
-    ${plan.allDone ? '<p class="fb fb-ok">¡Día completo!</p>' : ''}
-    <section class="stack" aria-label="Reto semanal">
-      <div class="spread"><b>Esta semana</b><span class="small muted">${Math.min(weekly.done, weekly.goal)}/${weekly.goal} días</span></div>
+    <div class="today-steps">${steps}</div>
+    ${plan.allDone ? '<p class="day-done">¡Día completo! Tu racha ya sumó.</p>' : '<p class="small muted center">Completa las tres para sumar a tu racha.</p>'}
+    <section class="week-card" aria-label="Reto semanal">
+      <div class="spread"><b>Reto de la semana</b><span class="small muted">${Math.min(weekly.done, weekly.goal)}/${weekly.goal} días</span></div>
       <div class="week">${Array.from({ length: weekly.goal }, (_, i) => `<span class="${i < weekly.done ? 'on' : ''}">${i < weekly.done ? icons.check.replace('<svg', '<svg width="20" height="20"') : i + 1}</span>`).join('')}</div>
     </section>
     ${today.user.role === 'admin' ? '<a class="btn btn-block" href="#/admin">Administración</a>' : ''}
   </div>`, { tab: '#/hoy' });
+  bindGuide(main);
+}
+
+/** Una sola vez: cuenta qué cambió, sobre todo que la temporada empezó desde cero. */
+function showWhatsNew(user) {
+  if (guideSeen('novedades-1') || overlay.querySelector('.news')) return;
+  const el = document.createElement('div');
+  el.className = 'modal news';
+  el.setAttribute('role', 'dialog');
+  el.setAttribute('aria-label', 'ENGLISH47 se actualizó');
+  el.innerHTML = `<div class="modal-card news-card">
+    ${capybara({ mood: 'celebrate', size: 132 })}
+    <p class="news-kicker">VERSIÓN 1.0</p>
+    <h2>¡ENGLISH47 se actualizó!</h2>
+    <p class="news-hello">¡Qué alegría verte, ${esc(user.displayName)}! Esto es lo nuevo:</p>
+    <ul class="news-list">
+      <li>${statIcons.flame}<span><b>Todos desde cero:</b> arranca una competencia nueva.</span></li>
+      <li>${statIcons.coin}<span><b>Tus propinas ahora son monedas</b> para comprar.</span></li>
+      <li>${icons.store}<span><b>Tienda nueva:</b> 8 animales y mucha ropa.</span></li>
+      <li>${icons.trophy}<span><b>Ranking:</b> compite por el primer puesto.</span></li>
+    </ul>
+    <button class="btn btn-primary btn-xl btn-block" id="news-go">¡A jugar!</button>
+  </div>`;
+  overlay.append(el);
+  confetti();
+  try { chime(); } catch { /* el teléfono puede bloquear el sonido hasta tocar */ }
+  el.querySelector('#news-go').addEventListener('click', () => { markGuide('novedades-1'); el.remove(); confetti(); });
 }
 
 function entryCard(v) {
@@ -839,27 +933,45 @@ async function viewFreeReview(vocabId) {
 }
 
 // --- Perfil ---
+const DAY_MS = 86400000;
+const DAY_LETTERS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+const dateOf = (ms) => new Date(ms).toISOString().slice(0, 10);
+const shortDate = (date) => new Intl.DateTimeFormat('es', { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(`${date}T00:00:00Z`)).replace('.', '');
+
+/** Esta semana a la vista, sin una cuadrícula de números. Las anteriores quedan en otro desplegable. */
 function calendarHtml(p) {
   const marks = new Map(p.calendar.map((d) => [d.date, d.status]));
-  const today = p.stats.today;
+  const { today, current, best, practicedTotal } = p.stats;
   const [y, m, d] = today.split('-').map(Number);
   const base = Date.UTC(y, m - 1, d);
-  const dow = (new Date(base).getUTCDay() + 6) % 7;
-  const cells = [];
-  // Cuatro semanas completas mas la actual: la primera celda siempre es lunes.
-  const total = 28 + dow + 1;
-  for (let i = total - 1; i >= 0; i--) {
-    const date = new Date(base - i * 86400000).toISOString().slice(0, 10);
+  const monday = base - ((new Date(base).getUTCDay() + 6) % 7) * DAY_MS;
+  const weekOf = (back) => DAY_LETTERS.map((_, i) => dateOf(monday - back * 7 * DAY_MS + i * DAY_MS));
+  const dayClass = (date) => {
     const status = marks.get(date);
-    const label = status === 'practiced' ? 'practicado' : status === 'shielded' ? 'cubierto con protector' : 'sin práctica';
-    cells.push(`<div class="cal-day ${status ?? ''} ${date === today ? 'today' : ''}" title="${date}: ${label}" aria-label="${date}: ${label}">
-      ${status === 'practiced' ? icons.check : status === 'shielded' ? icons.shield : ''}<span>${Number(date.slice(8))}</span></div>`);
-  }
-  return `<div class="cal" role="img" aria-label="Calendario de práctica">
-    ${['L', 'M', 'M', 'J', 'V', 'S', 'D'].map((h) => `<div class="cal-head">${h}</div>`).join('')}
-    ${cells.join('')}
-  </div>
-  `;
+    if (status) return status;
+    return date > today ? 'future' : 'missed';
+  };
+  const dayIcon = (date) => {
+    const c = dayClass(date);
+    return c === 'practiced' ? statIcons.flame : c === 'shielded' ? statIcons.shield : '';
+  };
+  const label = { practiced: 'practicaste', shielded: 'cubierto con protector', missed: 'sin práctica', future: 'todavía no llega' };
+  const pastWeeks = [1, 2, 3, 4].map((back) => {
+    const days = weekOf(back);
+    const done = days.filter((x) => marks.get(x) === 'practiced').length;
+    return `<div class="cal-row"><span class="cal-range">${shortDate(days[0])} – ${shortDate(days[6])}</span>
+      <span class="cal-dots">${days.map((x) => `<i class="${dayClass(x)}" title="${x}: ${label[dayClass(x)]}"></i>`).join('')}</span>
+      <b>${done}/7</b></div>`;
+  }).join('');
+  return `<div class="cal-week" role="list" aria-label="Esta semana">
+      ${weekOf(0).map((date, i) => `<div class="cal-day ${dayClass(date)} ${date === today ? 'today' : ''}" role="listitem" aria-label="${date}: ${label[dayClass(date)]}"><small>${DAY_LETTERS[i]}</small><span>${dayIcon(date)}</span></div>`).join('')}
+    </div>
+    <div class="cal-facts">
+      <div><b>${current}</b><small>Racha actual</small></div>
+      <div><b>${best}</b><small>Mejor racha</small></div>
+      <div><b>${practicedTotal}</b><small>Días en total</small></div>
+    </div>
+    ${foldHtml({ title: 'Semanas anteriores', cls: 'fold-inner', body: `<div class="cal-rows">${pastWeeks}</div><p class="small muted cal-legend"><i class="practiced"></i>practicaste <i class="shielded"></i>protector <i class="missed"></i>sin práctica</p>` })}`;
 }
 
 async function viewProfile() {
@@ -868,86 +980,69 @@ async function viewProfile() {
   state.stats = p.stats;
   setSound(p.user.soundOn);
   const eq = p.user.equipped;
-  const shopRow = (i) => {
-    if (i.kind === 'shield') {
-      const full = p.stats.shields >= p.maxShields;
-      return `<div class="vocab-chip"><span class="grow"><b>${esc(i.name)}</b><br><span class="small muted">Tienes ${p.stats.shields}</span></span>
-        <button class="btn btn-sm" data-buy="${i.id}" ${full || p.stats.coins < i.price ? 'disabled' : ''}>${statIcons.coin}${i.price}</button></div>`;
-    }
-    const equipped = eq[i.kind] === i.id;
-    const action = i.owned
-      ? `<button class="btn btn-sm ${equipped ? 'btn-green' : ''}" data-equip="${i.id}" data-slot="${i.kind}" data-on="${equipped}">${equipped ? 'Puesto' : 'Usar'}</button>`
-      : `<button class="btn btn-sm" data-buy="${i.id}" ${p.stats.coins < i.price ? 'disabled' : ''}>${statIcons.coin}${i.price}</button>`;
-    return `<div class="vocab-chip"><b class="grow">${esc(i.name)}</b>${action}</div>`;
-  };
+  const lv = p.stats.xpLevel;
+  const earnedCount = p.achievements.filter((a) => a.earnedAt).length;
   const timezones = ['America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles', 'America/Bogota', 'America/Mexico_City', 'America/Caracas', 'America/Havana', 'Europe/Madrid'];
   if (!timezones.includes(p.user.timezone)) timezones.unshift(p.user.timezone);
-  const main = shell(`<div class="page">
+  const main = shell(`<div class="page page-wide">
     <header class="hero hero-profile">
       <div class="grow"><h1 class="display">${esc(p.user.displayName)}</h1><p class="small">@${esc(p.user.username)}</p></div>
-      ${capybara({ mood: 'welcome', size: 92, equipped: eq })}
+      ${capybara({ mood: 'welcome', size: 96, equipped: eq })}
     </header>
-    <div class="tiles">
-      <div class="tile tile-streak"><b>${p.stats.current}</b><span>Racha</span></div>
-      <div class="tile tile-xp"><b>${p.stats.xp}</b><span>XP</span></div>
-      <div class="tile tile-coins"><b>${p.stats.coins}</b><span>Monedas</span></div>
-    </div>
-    <div class="tiles tiles-2">
-      <div class="tile tile-level"><b>Nivel ${p.mesas.level}</b><span>${plural(p.mesas.done, 'mesa', 'mesas')}</span></div>
-      <div class="tile tile-tips"><b>${p.mesas.tips}</b><span>En propinas</span></div>
-    </div>
-    <section class="card stack" aria-label="Calendario">${calendarHtml(p)}</section>
-
-    <h2>Logros</h2>
-    <div class="stack">${p.achievements.map((a) => `<div class="ach ${a.earnedAt ? 'earned' : ''}"><div class="ach-badge">${icons.trophy}</div><b>${esc(a.name)}</b></div>`).join('')}</div>
-
-    <h2>Tienda</h2>
-    <div class="stack">${p.shop.map(shopRow).join('')}</div>
-
-    <details class="card"><summary>Ajustes</summary>
+    <div class="profile-grid">
       <div class="stack">
-        <label class="field">Zona horaria<select class="input" id="tz">${timezones.map((t) => `<option ${t === p.user.timezone ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></label>
-        <label class="switch"><span>Sonido</span><input type="checkbox" id="sound" ${p.user.soundOn ? 'checked' : ''}></label>
-        <label class="switch"><span>Guardar el texto de mis conversaciones</span><input type="checkbox" id="keep" ${p.user.keepTranscripts ? 'checked' : ''}></label>
-        <p class="small muted">Las grabaciones nunca se guardan. Si algo técnico falla, la administración recibe un aviso con el tipo de teléfono, sin audio ni lo que dijiste.</p>
-        <form class="stack" id="password">
-          <b>Cambiar contraseña</b>
-          <label class="field">Contraseña actual<input class="input" name="current" type="password" autocomplete="current-password" required></label>
-          <label class="field">Contraseña nueva (mínimo 8 caracteres)<input class="input" name="next" type="password" autocomplete="new-password" minlength="8" required></label>
-          <button class="btn btn-block">Guardar contraseña</button>
-        </form>
-        ${p.storedQuotes ? '<button class="btn btn-block" id="unquote">Quitar las citas guardadas</button>' : ''}
-        <button class="btn btn-block" id="wipe">Borrar mi historial</button>
+        <section class="level-panel" aria-label="Tu nivel">
+          <div class="level-top">
+            <span class="level-badge level-badge-lg">${lv.level}</span>
+            <div class="grow"><small>Nivel ${lv.level}</small><h2>${esc(lv.name)}</h2></div>
+            <span class="level-xp">${statIcons.xp}${lv.xp} XP</span>
+          </div>
+          ${xpBar(lv, 'xp-bar-lg')}
+          <p class="level-left"><b>${lv.into} / ${lv.need} XP</b> · faltan ${lv.left} XP para el nivel ${lv.level + 1}</p>
+          <p class="small level-how">${statIcons.xp}El rayo es tu XP. Lo ganas al cumplir cada sección del día: hasta 40 XP diarios.</p>
+        </section>
+        <div class="tiles tiles-2">
+          <div class="tile tile-streak"><b>${p.stats.current}</b><span>Días de racha</span></div>
+          <div class="tile tile-coins"><b>${p.stats.coins}</b><span>Monedas</span></div>
+          <div class="tile tile-tips"><b>$${p.mesas.tips}</b><span>En propinas</span></div>
+          <div class="tile tile-level"><b>${p.mesas.done}</b><span>${p.mesas.done === 1 ? 'Mesa atendida' : 'Mesas atendidas'}</span></div>
+        </div>
+        ${guideHtml('perfil', ['<b>Racha:</b> días seguidos completando las tres secciones.', '<b>XP y nivel:</b> ganas XP al cumplir cada sección y con él subes de nivel.', '<b>Propinas:</b> lo que ganas en Mesas. Se suman a tus monedas y compiten en el Ranking.', '<b>Monedas:</b> vienen de las propinas y de completar el día. Se gastan en la Tienda.'], '¿Qué significa cada cosa?')}
       </div>
-    </details>
-    <details class="card"><summary>Más práctica</summary>
-      <div class="stack">
-        <a class="btn btn-block" href="#/palabras">Diccionario</a>
-        <a class="btn btn-block" href="#/ruta">Lecciones</a>
-        <a class="btn btn-block" href="#/hablar">Mesas clásicas</a>
-        <a class="btn btn-block" href="#/voz">Probar micrófono</a>
-        <a class="btn btn-block" href="#/diagnostico">Diagnóstico</a>
+      <div class="fold-list">
+        ${foldHtml({ title: 'Calendario', icon: statIcons.flame, meta: `${p.stats.practicedThisWeek} esta semana`, open: true, body: calendarHtml(p) })}
+        ${foldHtml({ title: 'Logros', icon: icons.trophy, meta: `${earnedCount}/${p.achievements.length}`, body: `<div class="stack">${p.achievements.map((a) => `<div class="ach ${a.earnedAt ? 'earned' : ''}"><div class="ach-badge">${icons.trophy}</div><div class="grow"><b>${esc(a.name)}</b><p class="small muted">${esc(a.desc)}</p></div></div>`).join('')}</div>` })}
+        ${foldHtml({ title: 'Más práctica', icon: icons.book, body: `<nav class="link-list" aria-label="Más práctica">
+          <a href="#/palabras">Diccionario</a>
+          <a href="#/ruta">Lecciones</a>
+          <a href="#/hablar">Mesas clásicas</a>
+          <a href="#/voz">Probar micrófono</a>
+          <a href="#/diagnostico">Diagnóstico</a>
+        </nav>` })}
+        ${foldHtml({ title: 'Ajustes', icon: icons.info, body: `<div class="stack">
+          <label class="field">Zona horaria<select class="input" id="tz">${timezones.map((t) => `<option ${t === p.user.timezone ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></label>
+          <label class="switch"><span>Sonido</span><input type="checkbox" id="sound" ${p.user.soundOn ? 'checked' : ''}></label>
+          <label class="switch"><span>Guardar el texto de mis conversaciones</span><input type="checkbox" id="keep" ${p.user.keepTranscripts ? 'checked' : ''}></label>
+          <p class="small muted">Las grabaciones nunca se guardan. Si algo técnico falla, la administración recibe un aviso con el tipo de teléfono, sin audio ni lo que dijiste.</p>
+          <form class="stack" id="password">
+            <b>Cambiar contraseña</b>
+            <label class="field">Contraseña actual<input class="input" name="current" type="password" autocomplete="current-password" required></label>
+            <label class="field">Contraseña nueva (mínimo 8 caracteres)<input class="input" name="next" type="password" autocomplete="new-password" minlength="8" required></label>
+            <button class="btn btn-block">Guardar contraseña</button>
+          </form>
+          ${p.storedQuotes ? '<button class="btn btn-block" id="unquote">Quitar las citas guardadas</button>' : ''}
+          <nav class="link-list">
+            <button data-report>Reportar un problema</button>
+            <button id="logout">Cerrar sesión</button>
+            <button id="wipe">Borrar mi historial</button>
+          </nav>
+        </div>` })}
+        ${p.user.role === 'admin' ? '<a class="btn btn-block" href="#/admin">Administración</a>' : ''}
       </div>
-    </details>
-    ${p.user.role === 'admin' ? '<a class="btn btn-block" href="#/admin">Administración</a>' : ''}
-    <button class="btn btn-block" data-report>Reportar un problema</button>
-    <button class="btn btn-block" id="logout">Cerrar sesión</button>
+    </div>
   </div>`, { tab: '#/perfil' });
+  bindGuide(main);
 
-  const newId = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
-  main.querySelectorAll('[data-buy]').forEach((b) => b.addEventListener('click', async () => {
-    try {
-      const out = await api('POST', '/api/shop/buy', { itemId: b.dataset.buy, requestId: newId() });
-      state.stats = out.stats;
-      toast('¡Compra hecha!');
-      render();
-    } catch (err) { toast(err.message); }
-  }));
-  main.querySelectorAll('[data-equip]').forEach((b) => b.addEventListener('click', async () => {
-    const on = b.dataset.on === 'true';
-    await api('POST', '/api/avatar/equip', on ? { slot: b.dataset.slot } : { itemId: b.dataset.equip });
-    render();
-  }));
   const setting = (id, fn) => main.querySelector(id).addEventListener('change', async (e) => {
     try { await api('POST', '/api/settings', fn(e.target)); toast('Guardado.'); } catch (err) { toast(err.message); }
   });
@@ -1054,6 +1149,7 @@ const ctx = {
   shell,
   toast,
   setTeardown: (fn) => { teardown = fn; },
+  xpBar,
   reward(rewards, { title, fallback }) {
     const lines = rewardLines(rewards);
     celebrate({ title, lines: lines.length ? lines : [fallback] });
@@ -1095,6 +1191,8 @@ const ROUTES = [
   [/^#\/palabra\/([\w-]+)$/, viewWord],
   [/^#\/repaso$/, () => viewFreeReview()],
   [/^#\/practicar\/(\w+)$/, viewFreeReview],
+  [/^#\/ranking$/, () => viewRanking(ctx)],
+  [/^#\/tienda$/, () => viewTienda(ctx)],
   [/^#\/perfil$/, viewProfile],
   [/^#\/admin$/, viewAdmin],
 ];
@@ -1113,6 +1211,8 @@ async function render() {
       if (token !== renderToken) return;
     }
     await match.view(...match.m.slice(1));
+    // Sale en la primera pantalla con menú que abra, sea cual sea.
+    if (token === renderToken && state.me && app.querySelector('.with-tabs')) showWhatsNew(state.me);
   } catch (err) {
     if (err instanceof ApiError && err.code === 'not_authenticated') return;
     if (token !== renderToken) return;
@@ -1121,6 +1221,6 @@ async function render() {
   }
 }
 
-window.addEventListener('hashchange', render);
+window.addEventListener('hashchange', () => { if (updateReady) location.reload(); else render(); });
 window.addEventListener('pagehide', () => { if (teardown) teardown(); });
 render();

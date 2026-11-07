@@ -79,7 +79,7 @@ export function azureSpeech({ apiKey, region }, transport = fetch, { retryMs = 8
     pronunciation: {
       name: 'azure:pronunciation-assessment',
       async assess({ audio, reference }) {
-        const config = { ReferenceText: reference, GradingSystem: 'HundredMark', Granularity: 'Word', Dimension: 'Comprehensive', EnableMiscue: true };
+        const config = { ReferenceText: reference, GradingSystem: 'HundredMark', Granularity: 'Word', Dimension: 'Comprehensive', EnableMiscue: Boolean(reference) };
         const best = await recognize(audio, { 'Pronunciation-Assessment': Buffer.from(JSON.stringify(config)).toString('base64') });
         if (!best) return { status: 'silence', text: '' };
         // La respuesta trae las puntuaciones en la raíz o dentro de PronunciationAssessment, según el formato.

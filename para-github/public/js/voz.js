@@ -1,4 +1,4 @@
-// Micrófono guiado para Mesas y Mejorar: tocar, hablar, tocar. No hay escritura en estas secciones.
+// Micrófono guiado para Mesas, Pronunciar y Escuchar: tocar, hablar, tocar. No hay escritura en estas secciones.
 import { ApiError, esc, icons, reportIssue } from './core.js';
 import { assessSpeech, micSupport, playLocal, speakCustomer, stopPlayback, transcribe, TurnRecorder } from './audio.js';
 
@@ -30,11 +30,13 @@ export function bindWords(box, voice) {
 }
 
 /** Deja claro que la pronunciación escrita es una ayuda: lo que se aprende es la palabra en inglés. */
-export const pronNote = () => `<aside class="pron-note">
-    <b>Sobre la pronunciación</b>
-    <p>Lo que ves entre / / es cómo suena, con letras del español. Es solo una ayuda: <b>lo importante es aprender la palabra en inglés.</b></p>
-    <p class="pron-example"><span>water</span> se escribe así · <span class="say-pron-mini">/ uóter /</span> así suena</p>
-  </aside>`;
+export const pronNote = () => `<details class="fold pron-note">
+    <summary><span class="fold-title">¿Qué significan las / /?</span><span class="fold-chevron" aria-hidden="true"></span></summary>
+    <div class="fold-body">
+      <p>Lo que ves entre / / es cómo suena, con letras del español. Es solo una ayuda: <b>lo importante es aprender la palabra en inglés.</b></p>
+      <p class="pron-example"><span>water</span> se escribe así · <span class="say-pron-mini">/ uóter /</span> así suena</p>
+    </div>
+  </details>`;
 
 export const micProblem = () => {
   const s = micSupport();
@@ -66,7 +68,7 @@ export function say(text, voice, { persona = null, slow = false, onFallback } = 
  * Con evaluación de pronunciación recibe además { result }, ya calculado y guardado por el servidor.
  * Sin transcripción disponible, el alumno se escucha y decide: la app no inventa una corrección.
  */
-export function mountMic(root, { voice, onResult, label = 'Toca y habla', assessQuery = null }) {
+export function mountMic(root, { voice, onResult, label = 'Toca y habla en inglés', assessQuery = null }) {
   const canAssess = Boolean(voice?.capabilities?.pronunciation?.available && assessQuery);
   const canTranscribe = canAssess || Boolean(voice?.capabilities?.transcription?.available);
   let recorder = null;
@@ -99,7 +101,7 @@ export function mountMic(root, { voice, onResult, label = 'Toca y habla', assess
         const assessed = await assessSpeech(clip, assessQuery);
         if (aborted) return;
         if (assessed.status === 'silence') { paint('idle', '<p class="notice notice-amber small">No te escuché. Inténtalo otra vez, más cerca.</p>'); return; }
-        onResult({ heard: assessed.heard, result: assessed.result });
+        onResult({ heard: assessed.heard, result: assessed.result, daily: assessed.daily, attempts: assessed.attempts });
         return;
       }
       const out = await transcribe(clip, null, { asWav: Boolean(voice?.pilotFree) });
@@ -161,32 +163,37 @@ export function mountMic(root, { voice, onResult, label = 'Toca y habla', assess
 }
 
 const star = (on) => `<svg viewBox="0 0 24 24" class="star ${on ? 'on' : ''}" aria-hidden="true"><path d="M12 2.500l3 6.200 6.800.9-5 4.700 1.300 6.700-6.100-3.300-6.100 3.300 1.300-6.700-5-4.700 6.800-.9z"/></svg>`;
-export const starsHtml = (n) => `<div class="stars" role="img" aria-label="${n} de 3 estrellas">${[1, 2, 3].map((i) => star(i <= n)).join('')}</div>`;
+export const starsHtml = (n) => `<div class="stars" role="img" aria-label="${n} de 5 estrellas">${[1, 2, 3, 4, 5].map((i) => star(i <= n)).join('')}</div>`;
 
-const CHEERS = { 3: '¡Excelente!', 2: '¡Muy bien!', 1: '¡Vas bien! Otra vez', 0: 'Otra vez, tranquilo' };
+const CHEERS = { 5: '¡Excelente!', 4: '¡Muy bien!', 3: '¡Bien!', 2: '¡Vas bien! Otra vez', 1: 'Otra vez, tranquilo', 0: 'Otra vez, tranquilo' };
 
 /** Resultado de la frase guía: palabras en verde o por mejorar, sin juzgar el acento. */
-export function resultHtml(r, heard = '', extra = '', { compare = false } = {}) {
+export function resultHtml(r, heard = '', extra = '', { compare = false, title = null } = {}) {
   // Sin haber visto la frase, otras palabras también pueden estar bien: no se castiga, se muestra el modelo.
   if (compare) return `<div class="result"><p class="result-title">Compáralo con el modelo</p><p class="heard">Hay otras formas de decirlo. La app revisa esta: dila para ganar la propina.</p>${extra ? `<div class="row-center">${extra}</div>` : ''}</div>`;
   if (r.selfCheck) return `<div class="result"><p class="result-title">¡Listo!</p>${extra ? `<div class="row-center">${extra}</div>` : ''}</div>`;
   return `<div class="result">
     ${starsHtml(r.stars)}
-    <p class="result-title">${CHEERS[r.stars]}</p>
-    ${r.stars < 3 ? `<p class="said">${r.words.map((x) => (x.ok ? `<span class="w-ok">${esc(x.w)}</span>` : `<button type="button" class="w-no" data-word="${esc(x.w.replace(/[^\p{L}\p{N}' -]/gu, ''))}" aria-label="Escuchar ${esc(x.w)}">${esc(x.w)}</button>`)).join(' ')}</p>` : ''}
-    ${heard && !r.assessed && r.stars < 3 ? `<p class="heard">Se entendió: «${esc(heard)}»</p>` : ''}
-    ${r.stars < 3 && r.words.some((x) => !x.ok) ? '<p class="heard">Toca una palabra para oírla.</p>' : ''}
+    <p class="result-title">${esc(title ?? CHEERS[r.stars])}</p>
+    ${r.stars < 5 && r.words.length ? `<p class="said">${r.words.map((x) => (x.ok ? `<span class="w-ok">${esc(x.w)}</span>` : `<button type="button" class="w-no" data-word="${esc(x.w.replace(/[^\p{L}\p{N}' -]/gu, ''))}" aria-label="Escuchar ${esc(x.w)}">${esc(x.w)}</button>`)).join(' ')}</p>` : ''}
+    ${heard && !r.assessed && r.stars < 5 ? `<p class="heard">Se entendió: «${esc(heard)}»</p>` : ''}
+    ${r.words.some((x) => !x.ok) ? '<p class="heard">Toca una palabra para oírla.</p>' : ''}
     ${extra ? `<div class="row-center">${extra}</div>` : ''}
-    ${r.tip && r.stars < 3 ? `<p class="tip">${r.tip.word ? `<b>${esc(r.tip.word)}</b> ` : ''}${esc(r.tip.text)}</p>` : ''}
+    ${r.tip && r.stars < 5 ? `<p class="tip">${r.tip.word ? `<b>${esc(r.tip.word)}:</b> ` : ''}${esc(r.tip.text)}</p>` : ''}
   </div>`;
 }
 
 /** Con 0 estrellas, repetir es lo principal. Nunca se bloquea: siempre se puede seguir. */
 export function resultActions(r, nextLabel = 'Seguir', hasClip = false) {
   const again = !r.selfCheck && r.stars === 0;
-  return `<div class="result-actions ${hasClip ? 'has-clip' : ''}">
-    <button class="btn ${again ? 'btn-primary' : ''}" id="retry">Otra vez</button>
-    ${hasClip ? `<button class="btn" id="me" aria-label="Escuchar mi grabación">${icons.sound}Mi voz</button>` : ''}
-    <button class="btn ${again ? '' : 'btn-primary'}" id="next">${esc(nextLabel)}</button>
+  // Un botón grande con lo siguiente; repetir y oírse quedan como acciones pequeñas, bien separadas.
+  return `<div class="result-actions">
+    ${again
+    ? `<button class="btn btn-primary btn-xl btn-block" id="retry">Otra vez</button>`
+    : `<button class="btn btn-primary btn-xl btn-block" id="next">${esc(nextLabel)}</button>`}
+    <div class="result-more">
+      ${again ? `<button class="text-btn text-btn-light" id="next">${esc(nextLabel)}</button>` : '<button class="text-btn text-btn-light" id="retry">Otra vez</button>'}
+      ${hasClip ? `<button class="text-btn text-btn-light" id="me" aria-label="Escuchar mi grabación">${icons.sound}Mi voz</button>` : ''}
+    </div>
   </div>`;
 }
