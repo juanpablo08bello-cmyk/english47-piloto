@@ -27,7 +27,15 @@ Configurar PILOT_FREE=true, DATABASE_URL, COOKIE_SECURE=true, PUBLIC_ORIGIN y un
 
 Si faltan las credenciales o las migraciones en el modo de piloto, el servidor detiene el arranque. Las respuestas a operaciones sobre el progreso se envían después de confirmar la transacción. Las solicitudes del mismo usuario se ordenan mediante un bloqueo de PostgreSQL. Un turno de voz o una red lenta pueden demorar otras acciones de esa misma cuenta.
 
-Para copias PostgreSQL, usar pg_dump con --format=custom y --schema=english47 con credenciales de respaldo por variables de entorno o un archivo privado de conexión. Restaurar con pg_restore en un destino vacío y comprobar inicio de sesión y totales. Mantener copias y credenciales fuera del archivo distribuido.
+## Respaldos
+
+GitHub Actions saca una copia diaria (`.github/workflows/respaldo.yml`, en la raíz del repositorio) con el secreto `DATABASE_URL_RESPALDO`, la restaura en una base temporal para comprobarla y la guarda 30 días como artefacto. Para sacar una copia antes de publicar: Actions → Respaldo diario → Run workflow.
+
+Para restaurar, descargar el artefacto y usar pg_restore en un destino vacío, nunca sobre la base en uso:
+
+    pg_restore --no-owner --no-privileges --exit-on-error --dbname="$DESTINO" english47-FECHA.dump
+
+Después volver a dar los permisos del rol de la app con el final de `scripts/supabase-setup.sql`, comprobar inicio de sesión y totales, y solo entonces apuntar `DATABASE_URL` en Render al destino. Las copias contienen cuentas y progreso: no compartirlas ni guardarlas en el código.
 
 ## Comprobar
 
