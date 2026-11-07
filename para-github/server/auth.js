@@ -19,6 +19,20 @@ export function verifyPassword(password, stored) {
   return timingSafeEqual(candidate, Buffer.from(key, 'hex'));
 }
 
+export const MIN_PASSWORD = 8;
+
+/** Cambia la contraseña y cierra todas las sesiones de esa cuenta. */
+export async function setPassword(db, userId, password) {
+  await db.prepare('UPDATE users SET password_hash=? WHERE id=?').run(hashPassword(password), userId);
+  await db.prepare('DELETE FROM sessions WHERE user_id=?').run(userId);
+}
+
+/** Contraseña temporal fácil de dictar: sin letras ni números que se confundan. */
+export function temporaryPassword() {
+  const letters = 'abcdefghjkmnpqrstuvwxyz23456789';
+  return [...randomBytes(10)].map((b) => letters[b % letters.length]).join('');
+}
+
 export async function createSession(db, userId, nowMs) {
   const token = randomBytes(32).toString('base64url');
   await db.prepare('INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?,?,?)')

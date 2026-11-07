@@ -375,13 +375,13 @@ async function viewToday() {
   Object.assign(state, { me: today.user, stats: today.stats, voice: today.voice });
   setSound(today.user.soundOn);
   if (today.user.role === 'student' && today.user.diagnosticStatus === 'pending') { location.hash = '#/bienvenida'; return; }
-  const { stats, plan, weekly } = today;
+  const { stats, plan, weekly, mesas } = today;
   const mood = plan.allDone ? 'celebrate' : plan.doneCount ? 'cheer' : 'welcome';
   const steps = TODAY_STEPS.map((step, i) => {
     const done = plan[step.key].done;
     return `<a class="today-step ${step.cls} ${plan.next === step.key ? 'is-next' : ''}" href="${step.href}">
       <span class="num">${done ? icons.check : i + 1}</span>
-      <span class="grow"><b>${step.title}</b><small>${step.sub}</small></span>
+      <span class="grow"><b>${step.title}</b><small>${step.key === 'tables' && mesas?.done ? `Nivel ${mesas.level} · ${mesas.tips} en propinas` : step.sub}</small></span>
     </a>`;
   }).join('');
   shell(`<div class="page">
@@ -907,6 +907,10 @@ async function viewProfile() {
       <div class="tile tile-xp"><b>${p.stats.xp}</b><span>XP</span></div>
       <div class="tile tile-coins"><b>${p.stats.coins}</b><span>Monedas</span></div>
     </div>
+    <div class="tiles tiles-2">
+      <div class="tile tile-level"><b>Nivel ${p.mesas.level}</b><span>${plural(p.mesas.done, 'mesa', 'mesas')}</span></div>
+      <div class="tile tile-tips"><b>${p.mesas.tips}</b><span>En propinas</span></div>
+    </div>
     <section class="card stack" aria-label="Calendario">${calendarHtml(p)}</section>
 
     <h2>Logros</h2>
@@ -920,7 +924,13 @@ async function viewProfile() {
         <label class="field">Zona horaria<select class="input" id="tz">${timezones.map((t) => `<option ${t === p.user.timezone ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></label>
         <label class="switch"><span>Sonido</span><input type="checkbox" id="sound" ${p.user.soundOn ? 'checked' : ''}></label>
         <label class="switch"><span>Guardar el texto de mis conversaciones</span><input type="checkbox" id="keep" ${p.user.keepTranscripts ? 'checked' : ''}></label>
-        <p class="small muted">Las grabaciones nunca se guardan.</p>
+        <p class="small muted">Las grabaciones nunca se guardan. Si algo técnico falla, la administración recibe un aviso con el tipo de teléfono, sin audio ni lo que dijiste.</p>
+        <form class="stack" id="password">
+          <b>Cambiar contraseña</b>
+          <label class="field">Contraseña actual<input class="input" name="current" type="password" autocomplete="current-password" required></label>
+          <label class="field">Contraseña nueva (mínimo 8 caracteres)<input class="input" name="next" type="password" autocomplete="new-password" minlength="8" required></label>
+          <button class="btn btn-block">Guardar contraseña</button>
+        </form>
         ${p.storedQuotes ? '<button class="btn btn-block" id="unquote">Quitar las citas guardadas</button>' : ''}
         <button class="btn btn-block" id="wipe">Borrar mi historial</button>
       </div>
@@ -956,6 +966,14 @@ async function viewProfile() {
   const setting = (id, fn) => main.querySelector(id).addEventListener('change', async (e) => {
     try { await api('POST', '/api/settings', fn(e.target)); toast('Guardado.'); } catch (err) { toast(err.message); }
   });
+  main.querySelector('#password').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try {
+      await api('POST', '/api/auth/password', Object.fromEntries(new FormData(e.target)));
+      e.target.reset();
+      toast('Contraseña cambiada.');
+    } catch (err) { toast(err.message); }
+  });
   setting('#tz', (t) => ({ timezone: t.value }));
   setting('#sound', (t) => { setSound(t.checked); return { soundOn: t.checked }; });
   setting('#keep', (t) => ({ keepTranscripts: t.checked }));
@@ -984,7 +1002,8 @@ async function viewAdmin() {
     <div class="stack-lg">
       <section class="card stack"><h3>Alumnos: ${o.seats.used} de ${o.seats.max} plazas</h3>
         ${o.students.map((s) => `<div class="spread"><span>${esc(s.displayName)} <span class="small muted">@${esc(s.username)}</span></span>
-          <button class="btn btn-sm" data-active="${s.id}" data-on="${s.active}">${s.active ? 'Desactivar' : 'Activar'}</button></div>`).join('') || '<p class="muted small">Sin alumnos todavía.</p>'}
+          <span class="row-wrap"><button class="btn btn-sm" data-reset="${s.id}" data-name="${esc(s.displayName)}">Contraseña</button><button class="btn btn-sm" data-active="${s.id}" data-on="${s.active}">${s.active ? 'Desactivar' : 'Activar'}</button></span></div>`).join('') || '<p class="muted small">Sin alumnos todavía.</p>'}
+        <div id="temp" hidden class="notice notice-green small"></div>
         <p class="small muted">Aquí no se muestra el historial de voz ni las conversaciones de cada alumno.</p>
       </section>
       <section class="card stack"><h3>Invitar</h3>
@@ -1000,7 +1019,7 @@ async function viewAdmin() {
         <p class="small muted">Los comentarios son lo único que los alumnos te envían: no incluyen sus conversaciones.</p>
       </section>
       <section class="card stack"><h3>Estado de la voz</h3>
-        ${Object.entries({ 'Cliente IA': o.voice.capabilities.customer, Transcripción: o.voice.capabilities.transcription, 'Voz del cliente': o.voice.capabilities.speech, Pronunciación: o.voice.capabilities.pronunciation }).map(([k, c]) => `<div class="spread small"><span>${esc(k)}</span><span class="chip ${c.available ? 'chip-green' : 'chip-amber'}">${c.available ? esc(c.provider) : 'Sin conectar'}</span></div>`).join('')}
+        ${Object.entries({ ...(o.voice.capabilities.customer.available ? { 'Cliente IA': o.voice.capabilities.customer } : {}), Transcripción: o.voice.capabilities.transcription, 'Voz del cliente': o.voice.capabilities.speech, Pronunciación: o.voice.capabilities.pronunciation }).map(([k, c]) => `<div class="spread small"><span>${esc(k)}</span><span class="chip ${c.available ? 'chip-green' : 'chip-amber'}">${c.available ? esc(c.provider) : 'Sin conectar'}</span></div>`).join('')}
         ${o.voice.missing.length ? `<ul class="small">${o.voice.missing.map((m) => `<li>${esc(m)}</li>`).join('')}</ul><p class="small muted">Pasos en README.md. Las claves van solo en el servidor. No se contrató ningún servicio.</p>` : ''}
       </section>
       <section class="card stack"><h3>Consumo de este mes</h3>
@@ -1020,6 +1039,15 @@ async function viewAdmin() {
       link.querySelector('#copy').addEventListener('click', () => navigator.clipboard?.writeText(url).then(() => toast('Copiado.')));
     } catch (err) { toast(err.message); }
   });
+  main.querySelectorAll('[data-reset]').forEach((b) => b.addEventListener('click', async () => {
+    if (!confirm(`Se creará una contraseña temporal para ${b.dataset.name} y se cerrarán sus sesiones. Su progreso no cambia. ¿Continuar?`)) return;
+    try {
+      const { password } = await api('POST', `/api/admin/student/${b.dataset.reset}/password`);
+      const box = main.querySelector('#temp');
+      box.hidden = false;
+      box.innerHTML = `<b>Contraseña temporal de ${esc(b.dataset.name)}. Solo se muestra ahora:</b><br><span class="en">${esc(password)}</span><br>Dile que la cambie en Perfil, Ajustes.`;
+    } catch (err) { toast(err.message); }
+  }));
   main.querySelectorAll('[data-fb]').forEach((b) => b.addEventListener('click', async () => {
     await api('POST', `/api/admin/feedback/${b.dataset.fb}/status`, { status: b.dataset.next });
     render();

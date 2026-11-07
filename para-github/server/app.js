@@ -6,7 +6,7 @@ import { extname, join, normalize as normalizePath, resolve, sep } from 'node:pa
 import { randomUUID } from 'node:crypto';
 import {
   createInvitation, createLoginLimiter, createSession, destroySession, activeStudents,
-  MAX_STUDENTS, pendingStudentInvites, redeemInvitation, userFromToken, verifyPassword,
+  MAX_STUDENTS, pendingStudentInvites, redeemInvitation, userFromToken, verifyPassword, MIN_PASSWORD, setPassword, temporaryPassword,
 } from './auth.js';
 import { addDays, isValidTimeZone, localDate, localHour } from './dates.js';
 import { tx } from './db.js';
@@ -23,7 +23,7 @@ import {
   closeAbandoned, countStoredQuotes, createSim, finishSim, hintFor, publicSim, removeStoredQuotes, rephrase, retryAttempt, setComfort, takeTurn,
 } from './sim/engine.js';
 import { checkLimit, logUsage, usageReport, voiceStatus } from './voice/index.js';
-import { currentMesa, finishImprove, finishLearn, finishMesa, generateMesa, getPlan, improveAttempt, improveHome, learnHome, mesaTurn, speechPersona, speechTarget } from './practice.js';
+import { currentMesa, finishImprove, finishLearn, finishMesa, generateMesa, getPlan, improveAttempt, improveHome, learnHome, mesaProgress, mesaTurn, speechPersona, speechTarget } from './practice.js';
 import { ProviderError } from './voice/providers.js';
 import { VOCAB, VOCAB_BY_ID } from '../content/vocab.js';
 import { LESSON_BY_ID, UNITS, CATEGORIES } from '../content/units.js';
@@ -156,6 +156,22 @@ export function createApp({ db, config, services, clock = Date.now }) {
     return { user: userPublic(await db.prepare('SELECT * FROM users WHERE id=?').get(r.userId)) };
   }, { auth: 'none' });
 
+  route('POST', '/api/auth/password', async ({ req, res, user, body }) => {
+    const now = clock();
+    const key = `${req.socket.remoteAddress}:password:${user.id}`;
+    if (limiter.blocked(key, now)) fail(429, 'too_many', 'Demasiados intentos. Espera unos minutos.');
+    if (!verifyPassword(String(body.current ?? ''), user.password_hash)) {
+      limiter.fail(key, now);
+      fail(400, 'bad_password', 'Tu contraseña actual no es esa.');
+    }
+    const next = String(body.next ?? '');
+    if (next.length < MIN_PASSWORD) fail(400, 'short_password', 'La contraseña nueva necesita al menos 8 caracteres.');
+    limiter.clear(key);
+    await setPassword(db, user.id, next);
+    setSession(req, res, await createSession(db, user.id, now));
+    return { ok: true };
+  });
+
   route('POST', '/api/auth/logout', async ({ req, res }) => {
     await destroySession(db, parseCookies(req.headers.cookie)[COOKIE]);
     res.setHeader('Set-Cookie', `${COOKIE}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax`);
@@ -180,6 +196,7 @@ export function createApp({ db, config, services, clock = Date.now }) {
       stats,
       session,
       plan: await getPlan(db, u, now),
+      mesas: await mesaProgress(db, u),
       greeting: hour < 12 ? 'Buenos días' : hour < 19 ? 'Buenas tardes' : 'Buenas noches',
       weekly: { goal: RULES.WEEKLY_GOAL_DAYS, done: stats.practicedThisWeek },
       voice: voiceStatus(services, config),
@@ -479,6 +496,34 @@ export function createApp({ db, config, services, clock = Date.now }) {
   });
   route('GET', '/api/feedback/sections', async () => ({ sections: FEEDBACK_SECTIONS }));
 
+  // Fallos técnicos: solo códigos conocidos y el tipo de teléfono. Nunca audio, frases ni texto libre.
+  const TECH_PROBLEMS = {
+    audio_blocked: 'El teléfono bloqueó el audio del cliente.',
+    speech_fallback: 'La voz del servidor no respondió y se usó la del teléfono.',
+    mic_denied: 'El alumno no dio permiso al micrófono.',
+    mic_no_device: 'No se encontró un micrófono.',
+    mic_busy: 'Otra app estaba usando el micrófono.',
+    mic_error: 'El micrófono falló al empezar a grabar.',
+    assess_failed: 'No se pudo revisar la voz.',
+    voice_limit: 'Se acabó el cupo de revisión de voz.',
+    js_error: 'La app tuvo un error en la pantalla.',
+  };
+  const deviceOf = (agent = '') => {
+    const system = /iPhone|iPad/.test(agent) ? 'iPhone' : /Android/.test(agent) ? 'Android' : /Windows/.test(agent) ? 'Windows' : /Mac OS/.test(agent) ? 'Mac' : 'Otro equipo';
+    const browser = /EdgA?\//.test(agent) ? 'Edge' : /CriOS|Chrome\//.test(agent) ? 'Chrome' : /FxiOS|Firefox\//.test(agent) ? 'Firefox' : /Safari\//.test(agent) ? 'Safari' : 'otro navegador';
+    return `${system}, ${browser}`;
+  };
+  route('POST', '/api/problema-tecnico', async ({ req, user, body }) => {
+    const text = TECH_PROBLEMS[body.code];
+    if (!text) fail(400, 'bad_code', 'Código no válido.');
+    const now = clock();
+    const where = /^[\w.-]{1,40}:\d{1,6}$/.test(body.where ?? '') ? ` (${body.where})` : '';
+    // Una vez al día por alumno y tipo de fallo: la clave repetida no se inserta.
+    await db.prepare('INSERT INTO feedback (user_id, request_id, section, trying, problem, comment, created_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT DO NOTHING')
+      .run(user.id, `auto:${body.code}:${localDate(now, user.timezone)}`, 'Técnico', 'Aviso automático', `${text}${where}`, deviceOf(req.headers['user-agent']), new Date(now).toISOString());
+    return { ok: true };
+  });
+
   // --- Simulaciones ---
   const OUTCOME_RANK = { not_started: 0, attempted: 1, completed: 2, resolved: 3 };
   /** Mejor resultado por escenario de este alumno. */
@@ -668,6 +713,7 @@ export function createApp({ db, config, services, clock = Date.now }) {
         total: SCENARIOS.length,
       },
       storedQuotes: await countStoredQuotes(db, u.id),
+      mesas: await mesaProgress(db, u),
       units: UNITS.map((x) => ({ id: x.id, title: x.title })),
       user: userPublic(u),
       stats,
@@ -766,6 +812,14 @@ export function createApp({ db, config, services, clock = Date.now }) {
   route('POST', '/api/admin/invite/:id/revoke', async ({ params }) => {
     await db.prepare('UPDATE invitations SET revoked=1 WHERE id=? AND used_by IS NULL').run(Number(params.id));
     return { ok: true };
+  }, { auth: 'admin' });
+  route('POST', '/api/admin/student/:id/password', async ({ params }) => {
+    const id = Number(params.id);
+    const student = await db.prepare("SELECT id FROM users WHERE role='student' AND id=?").get(id);
+    if (!student) fail(404, 'not_found', 'No encontramos ese alumno.');
+    const password = temporaryPassword();
+    await setPassword(db, id, password);
+    return { password };
   }, { auth: 'admin' });
   route('POST', '/api/admin/student/:id/active', async ({ params, body }) => {
     const id = Number(params.id);

@@ -1,5 +1,5 @@
 // Micrófono guiado para Mesas y Mejorar: tocar, hablar, tocar. No hay escritura en estas secciones.
-import { ApiError, esc, icons } from './core.js';
+import { ApiError, esc, icons, reportIssue } from './core.js';
 import { assessSpeech, micSupport, playLocal, speakCustomer, stopPlayback, transcribe, TurnRecorder } from './audio.js';
 
 const MIC_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>`;
@@ -11,6 +11,23 @@ const MIC_HELP = {
   insecure: 'El micrófono necesita una conexión segura (https).',
   unsupported: 'Este navegador no permite grabar. Abre la app en Chrome o Safari.',
 };
+
+const MIC_REPORT = { denied: 'mic_denied', no_mic: 'mic_no_device', busy: 'mic_busy' };
+
+/** Si el teléfono bloquea el sonido, se señala el altavoz en vez de quedarse en silencio. */
+export function showAudioBlocked(root, button, message = 'Toca el altavoz para oír al cliente.') {
+  reportIssue('audio_blocked');
+  button?.classList.add('attention');
+  const note = root.querySelector('#voicenote');
+  if (note) { note.textContent = message; note.hidden = false; }
+}
+
+/** Una palabra por mejorar se puede tocar para oírla despacio. */
+export function bindWords(box, voice) {
+  box.querySelectorAll('[data-word]').forEach((b) => b.addEventListener('click', () => {
+    say(b.dataset.word, voice, { slow: true }).catch(() => {});
+  }));
+}
 
 export const micProblem = () => {
   const s = micSupport();
@@ -69,7 +86,8 @@ export function mountMic(root, { voice, onResult, label = 'Toca y habla', assess
       onResult({ heard: out.text });
     } catch (err) {
       if (aborted || err?.code === 'cancelled') return;
-      if (err?.status === 429) { quotaOut = true; selfCheck('Por hoy se acabó la revisión automática. Escúchate y decide.'); return; }
+      if (err?.status === 429) { reportIssue('voice_limit'); quotaOut = true; selfCheck('Por ahora se acabó la revisión automática. Escúchate y decide.'); return; }
+      reportIssue('assess_failed');
       paint('idle', `<p class="notice notice-amber small">No pudimos revisar tu voz.</p><button class="btn" data-resend>Reintentar</button>`);
     }
   }
@@ -101,6 +119,7 @@ export function mountMic(root, { voice, onResult, label = 'Toca y habla', assess
     } catch (err) {
       recorder = null;
       if (err instanceof ApiError && err.code === 'cancelled') return;
+      reportIssue(MIC_REPORT[err?.code] ?? 'mic_error');
       paint('idle', `<p class="notice notice-amber small">${esc(MIC_HELP[err?.code] ?? 'No pudimos usar el micrófono. Inténtalo otra vez.')}</p>`);
     }
   }
@@ -123,8 +142,9 @@ export function resultHtml(r, heard = '', extra = '') {
   return `<div class="result">
     ${starsHtml(r.stars)}
     <p class="result-title">${CHEERS[r.stars]}</p>
-    ${r.stars < 3 ? `<p class="said">${r.words.map((x) => `<span class="${x.ok ? 'w-ok' : 'w-no'}">${esc(x.w)}</span>`).join(' ')}</p>` : ''}
+    ${r.stars < 3 ? `<p class="said">${r.words.map((x) => (x.ok ? `<span class="w-ok">${esc(x.w)}</span>` : `<button type="button" class="w-no" data-word="${esc(x.w.replace(/[^\p{L}\p{N}' -]/gu, ''))}" aria-label="Escuchar ${esc(x.w)}">${esc(x.w)}</button>`)).join(' ')}</p>` : ''}
     ${heard && !r.assessed && r.stars < 3 ? `<p class="heard">Se entendió: «${esc(heard)}»</p>` : ''}
+    ${r.stars < 3 && r.words.some((x) => !x.ok) ? '<p class="heard">Toca una palabra para oírla.</p>' : ''}
     ${extra ? `<div class="row-center">${extra}</div>` : ''}
     ${r.tip && r.stars < 3 ? `<p class="tip">${r.tip.word ? `<b>${esc(r.tip.word)}</b> ` : ''}${esc(r.tip.text)}</p>` : ''}
   </div>`;

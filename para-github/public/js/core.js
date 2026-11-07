@@ -15,6 +15,18 @@ function noteVersion(version) {
   seenVersion = version;
 }
 
+const reported = new Set();
+/** Avisa a Administración de un fallo técnico, una vez por sesión. Nunca envía audio ni texto del alumno. */
+export function reportIssue(code, where) {
+  if (reported.has(code)) return;
+  reported.add(code);
+  fetch('/api/problema-tecnico', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ code, where }) }).catch(() => {});
+}
+globalThis.addEventListener?.('error', (e) => {
+  const file = String(e.filename ?? '').split('/').pop();
+  if (file) reportIssue('js_error', `${file}:${e.lineno ?? 0}`);
+});
+
 export const newRequestId = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
 
 export async function api(method, path, body) {

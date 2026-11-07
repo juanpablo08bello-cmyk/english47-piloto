@@ -226,6 +226,7 @@ async function mesaStats(db, user) {
   return { done: rows.length, tips: rows.reduce((n, r) => n + (Number(r.key.split(':')[3]) || 0), 0) };
 }
 const progressOf = ({ done, tips }) => ({ ...levelFor(done), tips });
+export const mesaProgress = async (db, user) => progressOf(await mesaStats(db, user));
 const tipOf = (attempt) => (!attempt ? 0 : attempt.selfCheck ? 1 : attempt.stars);
 
 function publicMesa(mesa) {

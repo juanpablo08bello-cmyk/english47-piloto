@@ -3,7 +3,7 @@
 import { api, esc, icons, playSfx } from './core.js';
 import { capybara } from './capybara.js';
 import { stopPlayback } from './audio.js';
-import { micProblem, mountMic, resultActions, resultHtml, say } from './voz.js';
+import { bindWords, micProblem, mountMic, resultActions, resultHtml, say, showAudioBlocked } from './voz.js';
 
 export async function viewMejorar(ctx) {
   const data = await api('GET', '/api/mejorar');
@@ -58,12 +58,14 @@ export async function viewMejorarJugar(ctx, mode) {
           <button class="btn" id="slow"><span class="slow-mark">x½</span>Lento</button>
         </div>
       </div>
+      <p class="small muted center" id="voicenote" hidden></p>
       <div id="micbox"></div>
       <div id="result"></div>`;
-    main.querySelector('#play').addEventListener('click', () => say(item.en, voice).catch(() => {}));
+    const blocked = (err) => { if (err?.name === 'NotAllowedError') showAudioBlocked(main, main.querySelector('#play'), 'Toca Escuchar para oír la frase.'); };
+    main.querySelector('#play').addEventListener('click', () => say(item.en, voice).catch(blocked));
     main.querySelector('#slow').addEventListener('click', () => say(item.en, voice, { slow: true }).catch(() => {}));
     mic = mountMic(main.querySelector('#micbox'), { voice, onResult: (r) => heard(item, r), assessQuery: { tipo: 'mejorar', id: 0, index } });
-    say(item.en, voice).catch(() => {});
+    say(item.en, voice).catch(blocked);
     window.scrollTo(0, 0);
   };
 
@@ -77,6 +79,7 @@ export async function viewMejorarJugar(ctx, mode) {
       const micBox = main.querySelector('#micbox');
       micBox.hidden = true;
       box.innerHTML = `${resultHtml(result, text)}${resultActions(result, index + 1 < items.length ? 'Seguir' : 'Terminar')}`;
+      bindWords(box, voice);
       box.querySelector('#retry').addEventListener('click', () => { box.innerHTML = ''; micBox.hidden = false; });
       box.querySelector('#next').addEventListener('click', () => {
         index += 1;

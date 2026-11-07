@@ -1,9 +1,9 @@
 // Mesas: solo voz. Genera una mesa al azar y guía al alumno en cada turno con la frase que debe decir.
 // Cada turno suma propina según las estrellas; encadenar turnos perfectos da una racha.
-import { api, confetti, esc, icons, playSfx, statIcons } from './core.js';
+import { api, confetti, esc, icons, playSfx, reportIssue, statIcons } from './core.js';
 import { capybara } from './capybara.js';
 import { preloadSpeech, stopPlayback } from './audio.js';
-import { micProblem, mountMic, resultActions, resultHtml, say, starsHtml } from './voz.js';
+import { bindWords, micProblem, mountMic, resultActions, resultHtml, say, showAudioBlocked, starsHtml } from './voz.js';
 
 const HUES = ['coral', 'lilac', 'mint', 'pink'];
 const hueOf = (name) => HUES[[...name].reduce((n, ch) => n + ch.charCodeAt(0), 0) % HUES.length];
@@ -72,13 +72,19 @@ export async function viewMesaAtender(ctx) {
   ctx.setTeardown(cleanup);
   // Sin la voz del servidor no hay acento: se avisa en vez de prometer algo que no suena.
   const noteFallback = () => {
+    reportIssue('speech_fallback');
     const note = main.querySelector('#voicenote');
     if (note) note.hidden = false;
   };
   const speakGuest = async (step, slow = false) => {
     const face = main.querySelector('#guest-avatar');
     face?.classList.add('is-speaking');
-    try { await say(step.guest.en, voice, { persona: mesa.persona, slow, onFallback: noteFallback }); } catch { /* el alumno puede tocar el altavoz */ }
+    const speaker = main.querySelector('#again');
+    if (speaker?.classList.contains('attention')) {
+      speaker.classList.remove('attention');
+      main.querySelector('#voicenote').hidden = true;
+    }
+    try { await say(step.guest.en, voice, { persona: mesa.persona, slow, onFallback: noteFallback }); } catch (err) { if (err?.name === 'NotAllowedError') showAudioBlocked(main, main.querySelector('#again')); }
     face?.classList.remove('is-speaking');
   };
   const preloadTurn = (i) => {
@@ -159,6 +165,7 @@ export async function viewMesaAtender(ctx) {
       micBox.hidden = true;
       const extra = `${earned[index] > before ? `<span class="chip chip-coin">+$${earned[index] - before}</span>` : ''}${combo >= 2 ? `<span class="chip chip-combo">${statIcons.flame}${combo} seguidas</span>` : ''}`;
       box.innerHTML = `${resultHtml(result, text, extra)}${resultActions(result, index + 1 < mesa.steps.length ? 'Seguir' : 'Terminar')}`;
+      bindWords(box, voice);
       box.querySelector('#retry').addEventListener('click', () => { box.innerHTML = ''; micBox.hidden = false; });
       box.querySelector('#next').addEventListener('click', advance);
       preloadTurn(index + 1);

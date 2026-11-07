@@ -1,5 +1,13 @@
 # Registro de cambios
 
+## 0.5.1-piloto (2026-11-06)
+
+- Avisos técnicos en Administración, dentro de Comentarios: audio bloqueado, micrófono, voz o errores de pantalla, con el tipo de teléfono. Un aviso por tipo y día; solo códigos conocidos, sin audio ni texto del alumno.
+- Contraseñas: cada alumno puede cambiar la suya en Perfil, Ajustes, y la administración puede crear una temporal. Cierra las sesiones y no cambia el progreso.
+- Si el teléfono bloquea el sonido, se resalta el altavoz con un aviso en vez de quedarse en silencio.
+- Las palabras por mejorar se tocan para oírlas despacio.
+- Nivel y propinas también en Hoy y Perfil.
+
 ## 0.5.0-piloto, rediseño (2026-11-06)
 
 - Gemini fuera de la app: las mesas salen del generador propio y toda la voz pasa por Azure Speech. Se retiran su adaptador y su sistema de cuotas.

@@ -143,8 +143,10 @@ export async function speakCustomer(text, { slow = false, useServer = false, onF
     if (epoch !== playbackEpoch) return false;
     clearTimeout(timer);
     return await playBlobAt(blob, { slow }, epoch);
-  } catch {
+  } catch (err) {
     if (epoch !== playbackEpoch) return false;
+    // El teléfono bloqueó el sonido: la voz funciona, falta un toque del alumno.
+    if (err?.name === 'NotAllowedError') throw err;
     onFallback?.();
     return speakDeviceAt(text, { slow }, epoch);
   } finally {
