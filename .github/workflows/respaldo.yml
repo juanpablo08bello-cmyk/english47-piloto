@@ -1,0 +1,111 @@
+# Copia diaria de la base de Supabase. Cada copia se restaura en una base temporal antes de guardarla.
+# Va en la raíz del repositorio: .github/workflows/respaldo.yml
+name: Respaldo diario
+
+on:
+  schedule:
+    - cron: '17 7 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: respaldo
+  cancel-in-progress: false
+
+jobs:
+  respaldo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: solo-para-esta-prueba
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      PGCONNECT_TIMEOUT: '20'
+    steps:
+      - name: Instalar herramientas de PostgreSQL
+        run: |
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y postgresql-client-18
+          echo "/usr/lib/postgresql/18/bin" >> "$GITHUB_PATH"
+
+      - name: Preparar certificado de Supabase
+        run: |
+          cat > "$RUNNER_TEMP/supabase-ca.pem" <<'CERT'
+          -----BEGIN CERTIFICATE-----
+          MIIDxDCCAqygAwIBAgIUbLxMod62P2ktCiAkxnKJwtE9VPYwDQYJKoZIhvcNAQEL
+          BQAwazELMAkGA1UEBhMCVVMxEDAOBgNVBAgMB0RlbHdhcmUxEzARBgNVBAcMCk5l
+          dyBDYXN0bGUxFTATBgNVBAoMDFN1cGFiYXNlIEluYzEeMBwGA1UEAwwVU3VwYWJh
+          c2UgUm9vdCAyMDIxIENBMB4XDTIxMDQyODEwNTY1M1oXDTMxMDQyNjEwNTY1M1ow
+          azELMAkGA1UEBhMCVVMxEDAOBgNVBAgMB0RlbHdhcmUxEzARBgNVBAcMCk5ldyBD
+          YXN0bGUxFTATBgNVBAoMDFN1cGFiYXNlIEluYzEeMBwGA1UEAwwVU3VwYWJhc2Ug
+          Um9vdCAyMDIxIENBMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqQXW
+          QyHOB+qR2GJobCq/CBmQ40G0oDmCC3mzVnn8sv4XNeWtE5XcEL0uVih7Jo4Dkx1Q
+          DmGHBH1zDfgs2qXiLb6xpw/CKQPypZW1JssOTMIfQppNQ87K75Ya0p25Y3ePS2t2
+          GtvHxNjUV6kjOZjEn2yWEcBdpOVCUYBVFBNMB4YBHkNRDa/+S4uywAoaTWnCJLUi
+          cvTlHmMw6xSQQn1UfRQHk50DMCEJ7Cy1RxrZJrkXXRP3LqQL2ijJ6F4yMfh+Gyb4
+          O4XajoVj/+R4GwywKYrrS8PrSNtwxr5StlQO8zIQUSMiq26wM8mgELFlS/32Uclt
+          NaQ1xBRizkzpZct9DwIDAQABo2AwXjALBgNVHQ8EBAMCAQYwHQYDVR0OBBYEFKjX
+          uXY32CztkhImng4yJNUtaUYsMB8GA1UdIwQYMBaAFKjXuXY32CztkhImng4yJNUt
+          aUYsMA8GA1UdEwEB/wQFMAMBAf8wDQYJKoZIhvcNAQELBQADggEBAB8spzNn+4VU
+          tVxbdMaX+39Z50sc7uATmus16jmmHjhIHz+l/9GlJ5KqAMOx26mPZgfzG7oneL2b
+          VW+WgYUkTT3XEPFWnTp2RJwQao8/tYPXWEJDc0WVQHrpmnWOFKU/d3MqBgBm5y+6
+          jB81TU/RG2rVerPDWP+1MMcNNy0491CTL5XQZ7JfDJJ9CCmXSdtTl4uUQnSuv/Qx
+          Cea13BX2ZgJc7Au30vihLhub52De4P/4gonKsNHYdbWjg7OWKwNv/zitGDVDB9Y2
+          CMTyZKG3XEu5Ghl1LEnI3QmEKsqaCLv12BnVjbkSeZsMnevJPs1Ye6TjjJwdik5P
+          o/bKiIz+Fq8=
+          -----END CERTIFICATE-----
+          CERT
+          sed -i 's/^ *//' "$RUNNER_TEMP/supabase-ca.pem"
+
+      - name: Sacar la copia
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL_RESPALDO }}
+          PGSSLMODE: verify-full
+        run: |
+          test -n "$DATABASE_URL" || { echo "::error::Falta el secreto DATABASE_URL_RESPALDO"; exit 1; }
+          export PGSSLROOTCERT="$RUNNER_TEMP/supabase-ca.pem"
+          mkdir copia
+          pg_dump --format=custom --schema=english47 --no-owner --no-privileges \
+            --file="copia/english47-$(date -u +%F).dump" --dbname="$DATABASE_URL"
+          psql "$DATABASE_URL" -Atc "SELECT tablename FROM pg_tables WHERE schemaname='english47' ORDER BY 1" > tablas.txt
+          while read -r t; do
+            echo "$t $(psql "$DATABASE_URL" -Atc "SELECT count(*) FROM english47.\"$t\"")"
+          done < tablas.txt > origen.txt
+
+      - name: Comprobar que la copia se puede restaurar
+        env:
+          PGPASSWORD: solo-para-esta-prueba
+          PGHOST: localhost
+          PGUSER: postgres
+          PGSSLMODE: disable
+        run: |
+          createdb prueba
+          pg_restore --no-owner --no-privileges --exit-on-error --dbname=prueba copia/*.dump
+          psql prueba -Atc "SELECT tablename FROM pg_tables WHERE schemaname='english47' ORDER BY 1" > tablas-restauradas.txt
+          diff tablas.txt tablas-restauradas.txt || { echo "::error::La copia no trae las mismas tablas"; exit 1; }
+          while read -r t; do
+            echo "$t $(psql prueba -Atc "SELECT count(*) FROM english47.\"$t\"")"
+          done < tablas.txt > restaurado.txt
+          cat restaurado.txt
+          test "$(psql prueba -Atc 'SELECT count(*) FROM english47.users')" -gt 0 || { echo "::error::La copia no tiene cuentas"; exit 1; }
+          diff origen.txt restaurado.txt || echo "::notice::Hubo actividad durante la copia; los totales difieren un poco."
+
+      - name: Guardar la copia 30 días
+        uses: actions/upload-artifact@v4
+        with:
+          name: english47-respaldo-${{ github.run_number }}
+          path: copia/*.dump
+          retention-days: 30
+          compression-level: 0
+          if-no-files-found: error
