@@ -33,9 +33,9 @@ export function mountVoiceLab(root, { voice }) {
       <p class="small muted">Se conserva solo en memoria mientras sigues aquí; no se guarda en el servidor.</p>
     </section>
     <section class="card stack"><h2>3. Comprueba lo que entiende</h2>
-      <p class="small">${caps.transcription?.available?'Al pulsar este botón, enviarás la grabación al servicio de transcripción configurado. Puede consumir uso. No se envía una respuesta a una mesa.':'La transcripción no está configurada. Escucharte y practicar por texto siguen disponibles.'}</p>
+      <p class="small">${caps.transcription?.available?'Al pulsar este botón, enviarás la grabación al servicio de transcripción configurado. Puede consumir uso. No se envía una respuesta a una mesa.':'La transcripción no está configurada. Puedes escucharte igual.'}</p>
       <button class="btn btn-help btn-block" data-transcribe disabled>Enviar audio para transcribir</button>
-      <label class="field">Texto reconocido<textarea class="input" rows="3" data-transcript readonly placeholder="Aquí aparecerá la transcripción"></textarea></label>
+      <p class="en" data-transcript aria-live="polite"></p>
       <p class="small muted">Que aparezca una frase correcta no significa que se haya evaluado tu pronunciación.</p>
     </section>
     <p class="notice" role="status" data-status>Listo. Empieza escuchando o grabando una frase.</p>
@@ -81,7 +81,7 @@ export function mountVoiceLab(root, { voice }) {
   get('[data-record]').addEventListener('click',async()=>{
     if(active){await finish();return;}
     if(busy||permission)return;
-    stopPlayback(); operation++; permission=true; recording=null; get('[data-transcript]').value=''; controls();
+    stopPlayback(); operation++; permission=true; recording=null; get('[data-transcript]').textContent=''; controls();
     status('Esperando permiso del micrófono…');
     const id=operation;
     const local=new TurnRecorder({maxMs:30000,onAutoStop:finish}); recorder=local;
@@ -93,12 +93,12 @@ export function mountVoiceLab(root, { voice }) {
   get('[data-server]').addEventListener('click',()=>play('server'));
   get('[data-self]').addEventListener('click',()=>play('self'));
   get('[data-stop]').addEventListener('click',()=>{operation++;stopPlayback();if(controller){controller.abort();controller=null;busy=false;controls();}status(active?'Micrófono activo. Toca Terminar grabación.':'Audio detenido.');});
-  get('[data-discard]').addEventListener('click',()=>{operation++;stopPlayback();recording=null;get('[data-transcript]').value='';controls();status('Grabación descartada.');});
+  get('[data-discard]').addEventListener('click',()=>{operation++;stopPlayback();recording=null;get('[data-transcript]').textContent='';controls();status('Grabación descartada.');});
   get('[data-transcribe]').addEventListener('click',async()=>{
     if(!recording||busy||active)return;
     const id=++operation;stopPlayback();busy=true;controls();controller=new AbortController();const request=controller;
     status('Transcribiendo…');
-    try{const result=await transcribe(recording,null,{signal:request.signal,asWav:voice?.pilotFree});if(destroyed||request.signal.aborted||id!==operation)return;get('[data-transcript]').value=result.text??'';status(result.status==='silence'||result.status==='unclear'?'No entendimos bien. Puedes volver a grabar.':'Transcripción recibida. Comprueba cantidades, platos y negaciones.');}
+    try{const result=await transcribe(recording,null,{signal:request.signal,asWav:voice?.pilotFree});if(destroyed||request.signal.aborted||id!==operation)return;get('[data-transcript]').textContent=result.text??'';status(result.status==='silence'||result.status==='unclear'?'No entendimos bien. Puedes volver a grabar.':'Transcripción recibida. Comprueba cantidades, platos y negaciones.');}
     catch(err){if(!destroyed&&!request.signal.aborted)status(err.message);}
     finally{if(controller===request){controller=null;busy=false;controls();}}
   });

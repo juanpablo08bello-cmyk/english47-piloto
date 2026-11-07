@@ -151,7 +151,7 @@ class RootDouble {
 const flush=()=>new Promise(r=>setImmediate(r));
 const json=(data)=>({ok:true,status:200,headers:new Headers({'content-type':'application/json'}),json:async()=>data});
 
-test('simulacion: incluso una transcripcion larga espera confirmacion y admite editarla',async(t)=>{
+test('simulacion: lo entendido espera confirmacion, se puede escuchar y no se escribe',async(t)=>{
   const b=browser(t);let now=1000;t.mock.method(performance,'now',()=>now);
   const root=new RootDouble();const turns=[];
   const sim={id:1,mode:'ai',helpMode:'help',status:'active',title:'Dinner',titleEs:'Cena',turns:[{role:'guest',text:'Hello'}],waiterTurns:0,done:false};
@@ -164,10 +164,12 @@ test('simulacion: incluso una transcripcion larga espera confirmacion y admite e
   await flush();root.click('[data-mic]');await flush();now=2600;
   root.click('[data-mic]');await flush();
   assert.equal(turns.length,0,'No envio automatico aunque status sea ok');
-  assert.match(root.innerHTML,/Esto fue lo que escuchamos/);
-  root.querySelector('[data-transcript]').value='Two steaks, no onions.';
+  assert.match(root.innerHTML,/Se entendió/);
+  assert.match(root.innerHTML,/Two steaks, onions on the side\./);
+  assert.match(root.innerHTML,/data-play-own/,'puede escuchar su grabacion');
+  assert.doesNotMatch(root.innerHTML,/<textarea|<input/,'no hay donde escribir');
   root.click('[data-confirm-yes]');await flush();
-  assert.equal(turns.length,1);assert.equal(turns[0].text,'Two steaks, no onions.');assert.equal(turns[0].source,'audio');
+  assert.equal(turns.length,1);assert.equal(turns[0].text,'Two steaks, onions on the side.');assert.equal(turns[0].source,'audio');
 });
 
 test('prueba de voz: grabarse es local y transcribir requiere un toque separado',async(t)=>{
@@ -178,7 +180,7 @@ test('prueba de voz: grabarse es local y transcribir requiere un toque separado'
   await root.click('[data-record]');now=2600;await root.click('[data-record]');
   assert.equal(uploads,0);assert.equal(root.querySelector('[data-self]').disabled,false);
   await root.click('[data-transcribe]');assert.equal(uploads,1);
-  assert.equal(root.querySelector('[data-transcript]').value,'Medium rare, please.');
+  assert.equal(root.querySelector('[data-transcript]').textContent,'Medium rare, please.');
 });
 
 

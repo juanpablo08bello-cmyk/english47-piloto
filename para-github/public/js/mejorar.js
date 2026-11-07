@@ -3,7 +3,7 @@
 import { api, esc, icons, playSfx } from './core.js';
 import { capybara } from './capybara.js';
 import { stopPlayback } from './audio.js';
-import { bindWords, micProblem, mountMic, resultActions, resultHtml, say, showAudioBlocked } from './voz.js';
+import { bindWords, micProblem, mountMic, pronNote, resultActions, resultHtml, say, showAudioBlocked } from './voz.js';
 
 export async function viewMejorar(ctx) {
   const data = await api('GET', '/api/mejorar');
@@ -25,6 +25,7 @@ export async function viewMejorar(ctx) {
       <b>Escuchar</b>
     </a>
     <p class="small muted center">${voice.capabilities?.pronunciation?.available ? 'Te compara con un hablante nativo. Tener acento está bien.' : 'Compara las palabras que se entendieron. No mide tu acento.'}</p>
+    ${pronNote()}
   </div>`, { tab: '#/mejorar' });
 }
 
@@ -51,6 +52,7 @@ export async function viewMejorarJugar(ctx, mode) {
         <p class="eyebrow">${listen ? 'Escucha y repite' : 'Dilo en voz alta'}</p>
         <div id="text" ${listen ? 'hidden' : ''}>
           <h1 class="phrase">${esc(item.en)}</h1>
+          ${item.pron ? `<p class="phrase-pron" lang="es">${esc(item.pron)}</p>` : ''}
           <p class="phrase-es">${esc(item.es)}</p>
         </div>
         <div class="row-center">
@@ -78,7 +80,8 @@ export async function viewMejorarJugar(ctx, mode) {
       playSfx(selfCheck ? 'good' : result.stars === 3 ? 'great' : result.stars ? 'good' : 'miss');
       const micBox = main.querySelector('#micbox');
       micBox.hidden = true;
-      box.innerHTML = `${resultHtml(result, text)}${resultActions(result, index + 1 < items.length ? 'Seguir' : 'Terminar')}`;
+      box.innerHTML = `${resultHtml(result, text)}${resultActions(result, index + 1 < items.length ? 'Seguir' : 'Terminar', mic?.hasClip())}`;
+      box.querySelector('#me')?.addEventListener('click', () => mic?.playLast());
       bindWords(box, voice);
       box.querySelector('#retry').addEventListener('click', () => { box.innerHTML = ''; micBox.hidden = false; });
       box.querySelector('#next').addEventListener('click', () => {

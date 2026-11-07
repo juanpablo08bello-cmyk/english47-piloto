@@ -6,6 +6,9 @@ import { assessedResult, compareSpeech, speechPersona } from '../server/practice
 import { azureSpeech } from '../server/voice/azure.js';
 import { tokens } from '../server/text.js';
 import { FRASES, TOPICS } from '../content/frases.js';
+import { goalFor } from '../content/objetivos.js';
+import { missingWords, pronounce } from '../content/pronunciacion.js';
+import { SCENARIOS } from '../content/scenarios.js';
 import { ACCENTS, buildMesa, LEVELS, levelFor, mesaKey, MOODS, recentFrom, SCENE_IDS, VOICES } from '../content/mesas.js';
 import { loadConfig } from '../server/config.js';
 
@@ -87,6 +90,38 @@ test('las mesas evitan repetir situación y persona, y se suben de nivel', () =>
   assert.deepEqual([0, 3, 4, 9, 10, 19, 20, 500].map((n) => levelFor(n).level), [1, 1, 2, 2, 3, 3, 4, 4]);
   assert.equal(levelFor(3).toNext, 1);
   assert.equal(levelFor(500).toNext, 0);
+});
+
+test('toda frase que se dice tiene su pronunciación escrita en español', () => {
+  const missing = new Set();
+  let rng = 3;
+  const random = () => { rng = (rng * 16807) % 2147483647; return rng / 2147483647; };
+  for (const f of FRASES) missingWords(f.en).forEach((w) => missing.add(w));
+  for (const scene of SCENE_IDS) for (const { from } of LEVELS) for (let i = 0; i < 150; i++) {
+    for (const s of buildMesa(random, { done: from, scene }).steps) missingWords(s.say.en).forEach((w) => missing.add(w));
+  }
+  for (const s of SCENARIOS) for (const b of s.beats) for (const o of b.options ?? []) missingWords(o).forEach((w) => missing.add(w));
+  assert.deepEqual([...missing], []);
+  assert.equal(pronounce("Welcome in! I'll be right back."), 'uélcom in! áil bi ráit bak.');
+  assert.equal(pronounce('Palabra inventadísima'), null, 'si falta una palabra no se inventa');
+});
+
+test('toda frase de Mesas tiene un objetivo en español que no adelanta el inglés', () => {
+  let rng = 5;
+  const random = () => { rng = (rng * 16807) % 2147483647; return rng / 2147483647; };
+  const missing = new Set();
+  for (const scene of SCENE_IDS) for (const { from } of LEVELS) for (let i = 0; i < 200; i++) {
+    for (const s of buildMesa(random, { done: from, scene }).steps) {
+      const goal = goalFor(s.say);
+      if (!goal) { missing.add(s.say.en); continue; }
+      assert.ok(!goal.includes(s.say.en), goal);
+      assert.doesNotMatch(goal, /undefined|\bnull\b/, s.say.en);
+    }
+  }
+  assert.deepEqual([...missing], []);
+  assert.equal(goalFor({ en: 'I recommend the snapper.', es: 'Le recomiendo el pargo.' }), 'Recomiéndale el pargo.');
+  assert.equal(goalFor({ en: 'Let me confirm. One burger, well done, with fries.', es: 'Déjeme confirmar. La hamburguesa, bien cocido, con papas fritas.' }), 'Confirma el pedido: la hamburguesa, bien cocido, con papas fritas.');
+  assert.equal(goalFor({ en: 'Frase desconocida.', es: 'x' }), null);
 });
 
 test('solo se aceptan voces y acentos del catálogo', () => {
@@ -236,6 +271,8 @@ test('Mesas: guía, compara, paga una sola vez y no guarda lo oído', async () =
   assert.equal((await api('GET', '/api/mesas')).data.mesa, null);
   const { mesa } = (await api('POST', '/api/mesas/generar')).data;
   assert.equal((await api('POST', `/api/mesas/${mesa.id}/terminar`)).status, 400, 'no se termina sin hablar');
+  assert.ok(mesa.steps.every((s) => s.say.pron), 'cada turno muestra cómo suena');
+  assert.ok(mesa.steps.every((s) => s.say.goal), 'cada turno trae su objetivo');
   let confirmResult;
   for (const [index, step] of mesa.steps.entries()) {
     const r = await api('POST', `/api/mesas/${mesa.id}/turno`, { index, heard: `${step.say.en} secreto-oido` });
@@ -300,6 +337,7 @@ test('Mejorar: usa lo que costó en la mesa y al completar las tres secciones el
   assert.equal((await api('POST', '/api/mejorar/terminar')).status, 400, 'hay que decir algo');
   const { items } = (await api('GET', '/api/mejorar')).data;
   assert.equal(items.length, 4);
+  assert.ok(items.every((x) => x.pron), 'Mejorar también muestra cómo suena');
   assert.equal(items[0].en, mesa.steps[0].say.en, 'empieza por lo que costó');
   const attempt = (await api('POST', '/api/mejorar/intento', { index: 0, heard: items[0].en })).data;
   assert.equal(attempt.result.stars, 3);

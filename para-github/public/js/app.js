@@ -5,6 +5,7 @@ import { deviceVoiceAvailable, speakDevice, stopPlayback } from './audio.js';
 import { mountExercises } from './exercise.js';
 import { viewAprender, viewAprenderJugar } from './aprender.js';
 import { viewMesas, viewMesaAtender } from './mesas.js';
+import { pronNote } from './voz.js';
 import { viewMejorar, viewMejorarJugar } from './mejorar.js';
 import { modeBanner, mountSim } from './sim.js';
 import { mountVoiceLab } from './voice-lab.js';
@@ -408,7 +409,7 @@ function entryCard(v) {
   return `<article class="stack">
     <div><h1 class="en">${esc(v.en)}</h1><p>${esc(v.es)}</p>
       <div class="row-wrap" style="margin-top:4px"><span class="chip">${esc(DIFFICULTY[v.difficulty] ?? '')}</span><span class="chip">${esc(v.category)}</span></div>
-      ${v.pron ? `<p class="small muted">Ayuda aproximada, no reemplaza al audio: «${esc(v.pron)}»</p>` : ''}
+      ${v.pron ? `<p class="word-pron" lang="es">${esc(v.pron)}</p>` : ''}
     </div>
     ${deviceVoiceAvailable() ? `<button class="btn btn-help btn-block" data-say="${esc(v.en)}">${icons.sound}Escuchar</button>` : ''}
     <div class="card stack">
@@ -527,6 +528,7 @@ async function viewTalk() {
     <div class="hello">${capybara({ mood: 'cheer', size: 72, equipped: state.me?.equipped })}<div><h1>Hablar</h1><p class="small muted">Atiende una mesa. Sin público: solo tú y un cliente.</p></div></div>
     ${v.aiAvailable ? modeBanner('ai', v) : ''}
     <a class="btn btn-help btn-block" href="#/voz">Probar mi micrófono y las voces</a>
+    ${pronNote()}
     <section class="stack"><h2>Situaciones</h2>${base.map(item).join('')}</section>
     <section class="stack"><h2>Variantes más exigentes</h2><p class="small muted">Otros pedidos e imprevistos para las mismas unidades.</p>${variants.map(item).join('')}</section>
   </div>`, { tab: '#/hablar' });
@@ -619,11 +621,6 @@ function viewSummary({ sim, rewards, quotesSaved }, { daily, exit }) {
         : 'Evaluación con IA sobre tu texto: vocabulario, intención y gramática.';
   const earned = rewards?.achievements ?? [];
   const showQuoteNotice = quotesSaved === false && s.improvements.some((i) => i.yours);
-  const retryBox = (i) => `<form class="stack" data-retry-form="${i}">
-      <label class="field">Tu nuevo intento<input class="input" data-retry-text autocomplete="off" spellcheck="false" placeholder="Escríbelo en inglés"></label>
-      <button class="btn btn-help btn-block">Volver a intentarlo</button>
-      <div data-retry-result></div>
-    </form>`;
   main.innerHTML = `<div class="stack-lg">
     <div class="hello">${capybara({ mood: outcome === 'resolved' ? 'celebrate' : 'cheer', size: 72, equipped: state.me?.equipped })}<div><h1>Tu resumen</h1><p class="small muted">${esc(sim.title)}</p></div></div>
     <section class="card stack">
@@ -635,7 +632,7 @@ function viewSummary({ sim, rewards, quotesSaved }, { daily, exit }) {
     <section class="stack"><h2>Lo que lograste</h2><p>${esc(s.didWell)}</p></section>
     ${s.criticalMet === false ? '<div class="notice notice-amber"><b>Punto clave de servicio:</b> en esta situación hay que evitar promesas o garantías sin autorización. Revísalo abajo y repítelo.</div>' : ''}
     ${s.improvements.length ? `<section class="stack"><h2>Para mejorar</h2>
-      ${s.improvements.map((it, i) => improvementCard(it, retryBox(i))).join('')}</section>` : ''}
+      ${s.improvements.map((it) => improvementCard(it)).join('')}</section>` : ''}
     ${s.reinforce?.length ? `<section class="stack"><h3>Para reforzar</h3><ul class="small">${s.reinforce.map((r) => `<li>${esc(r)}</li>`).join('')}</ul></section>` : ''}
     ${s.reviewVocab?.length ? `<section class="stack"><h3>Entra a tu repaso</h3><div class="row-wrap">${s.reviewVocab.map((v) => `<a class="chip chip-blue" href="#/palabra/${v.id}" style="text-decoration:none">${esc(v.en)}</a>`).join('')}</div></section>` : ''}
     <div class="notice small">${esc(basis)}</div>
@@ -648,18 +645,6 @@ function viewSummary({ sim, rewards, quotesSaved }, { daily, exit }) {
     <a class="btn btn-block" href="#/preparar/${sim.scenarioId}${daily ? '/diario' : ''}">Repetir situación</a>
   </div>`;
   bindEntry(main);
-  main.querySelectorAll('[data-retry-form]').forEach((form) => form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const text = form.querySelector('[data-retry-text]').value.trim();
-    const box = form.querySelector('[data-retry-result]');
-    if (!text) { toast('Escribe tu nuevo intento.'); return; }
-    try {
-      const r = await api('POST', `/api/sim/${sim.id}/retry`, { index: Number(form.dataset.retryForm), text });
-      box.innerHTML = `<div class="feedback feedback-${r.status === 'correct' ? 'correct' : r.status === 'needs_review' ? 'needs-review' : 'review'}" role="status"><p class="small">${esc(r.message)}</p></div>`;
-      if (r.earned) celebrate({ title: 'Logro nuevo', lines: [achievementName('retried_phrase')] });
-      form.querySelector('[data-retry-text]').value = '';
-    } catch (err) { toast(err.message); }
-  }));
   main.querySelectorAll('[data-comfort]').forEach((b) => b.addEventListener('click', async () => {
     await api('POST', `/api/sim/${sim.id}/comfort`, { value: Number(b.dataset.comfort) });
     main.querySelectorAll('[data-comfort]').forEach((o) => o.classList.toggle('btn-primary', o === b));

@@ -162,13 +162,13 @@ export function playLocal(blob) {
 
 const PREFERRED = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus'];
 export function micSupport() {
-  if (!window.isSecureContext) return { ok: false, code: 'insecure', message: 'El micrófono necesita https. Puedes responder por texto.' };
-  if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) return { ok: false, code: 'unsupported', message: 'Este navegador no permite grabar. Puedes responder por texto.' };
+  if (!window.isSecureContext) return { ok: false, code: 'insecure', message: 'El micrófono necesita una conexión segura (https).' };
+  if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) return { ok: false, code: 'unsupported', message: 'Este navegador no permite grabar. Abre la app en Chrome o Safari.' };
   return { ok: true };
 }
 const MIC_ERRORS = {
-  NotAllowedError: { code: 'denied', message: 'Activa el permiso del micrófono en los ajustes del navegador, o responde por texto.' },
-  NotFoundError: { code: 'no_mic', message: 'No encontramos un micrófono. Puedes responder por texto.' },
+  NotAllowedError: { code: 'denied', message: 'Activa el permiso del micrófono en los ajustes del navegador.' },
+  NotFoundError: { code: 'no_mic', message: 'No encontramos un micrófono.' },
   NotReadableError: { code: 'busy', message: 'Otra app está usando el micrófono. Ciérrala e inténtalo de nuevo.' },
 };
 
@@ -204,7 +204,7 @@ export class TurnRecorder {
       this.chunks = []; this.peak = 0; this.levelKnown = false; this.stopPromise = null; this.recordingError = null;
       this.recorder.ondataavailable = (e) => { if (e.data.size) this.chunks.push(e.data); };
       this.recorder.onerror = () => {
-        this.recordingError = new ApiError(0, 'recording_error', 'Se interrumpió la grabación. Inténtalo de nuevo o escribe tu respuesta.');
+        this.recordingError = new ApiError(0, 'recording_error', 'Se interrumpió la grabación. Inténtalo de nuevo.');
         this.abort();
       };
       this.startedAt = performance.now();
@@ -218,7 +218,7 @@ export class TurnRecorder {
     } catch (err) {
       this.release();
       if (err instanceof ApiError) throw err;
-      const info = MIC_ERRORS[err.name] ?? { code: 'mic_error', message: 'No pudimos grabar. Inténtalo de nuevo o responde por texto.' };
+      const info = MIC_ERRORS[err.name] ?? { code: 'mic_error', message: 'No pudimos grabar. Inténtalo de nuevo.' };
       throw new ApiError(0, info.code, info.message);
     } finally { this.starting = false; }
   }
@@ -327,13 +327,13 @@ export async function transcribe({ blob, ms, mimeType }, onSent, { signal, asWav
     });
     onSent?.();
     let data;
-    try { data = await res.json(); } catch { throw new ApiError(res.status, 'bad_response', 'La transcripción no respondió correctamente. Reintenta el envío o escribe tu respuesta.'); }
+    try { data = await res.json(); } catch { throw new ApiError(res.status, 'bad_response', 'La revisión de voz no respondió bien. Reintenta el envío.'); }
     if (!res.ok) throw new ApiError(res.status, data.error, data.message);
     return data;
   } catch (err) {
     if (err instanceof ApiError) throw err;
     if (signal?.aborted) throw new ApiError(0, 'cancelled', 'Se canceló el envío de audio.');
-    throw new ApiError(0, controller.signal.aborted ? 'timeout' : 'network', 'No pudimos transcribir el audio. Reintenta el envío o responde por texto.');
+    throw new ApiError(0, controller.signal.aborted ? 'timeout' : 'network', 'No pudimos revisar el audio. Reintenta el envío.');
   } finally {
     clearTimeout(timer); signal?.removeEventListener('abort', cancel);
   }

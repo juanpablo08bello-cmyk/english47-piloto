@@ -18,11 +18,11 @@ const newId = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${
 
 export function modeBanner(mode, voice) {
   if (mode === 'demo') {
-    return `<div class="status-mode status-demo" role="note">${icons.info}<span><b>Práctica guiada.</b> Escribe tu respuesta o elige un ejemplo. El cliente sigue un guion.</span></div>`;
+    return `<div class="status-mode status-demo" role="note">${icons.info}<span><b>Práctica guiada.</b> Di tu respuesta con el micrófono. El cliente sigue un guion.</span></div>`;
   }
   const speech = voice?.capabilities?.speech;
   const stt = voice?.capabilities?.transcription;
-  return `<div class="status-mode status-ai" role="note">${icons.info}<span><b>Conversación con IA conectada.</b> ${stt?.available ? 'Tu audio se envía para transcribirlo y no se guarda.' : 'La transcripción no está conectada: responde por texto.'} ${speech?.available ? 'La voz del cliente es generada por IA.' : 'La voz del cliente es la de tu dispositivo.'}</span></div>`;
+  return `<div class="status-mode status-ai" role="note">${icons.info}<span><b>Conversación con IA conectada.</b> ${stt?.available ? 'Tu audio se envía para transcribirlo y no se guarda.' : 'La revisión de voz no está conectada.'} ${speech?.available ? 'La voz del cliente es generada por IA.' : 'La voz del cliente es la de tu dispositivo.'}</span></div>`;
 }
 
 export function mountSim(root, { simId, voice, onFinished, onExit }) {
@@ -31,22 +31,22 @@ export function mountSim(root, { simId, voice, onFinished, onExit }) {
   let errorMessage = '';
   let recorder = null;
   let showTranscript = true;
-  let showText = false;
+  let pickOnly = false; // sin micrófono o sin revisión de voz, se elige una respuesta tocándola
   let demoRecording = null;
-  let pending = null; // toda transcripcion se revisa antes de enviar
+  let pending = null; // lo que se entendió se muestra antes de enviarlo
+  let pendingClip = null; // la grabación vive solo en memoria mientras sigues en esta pantalla
   let failedRecording = null;
   let uploadController = null;
   let playId = 0;
   let hint = null;
-  let draft = '';
   let attempt = null;
   let busy = false;
   let destroyed = false;
   let recStart = 0;
   let recTimer = null;
 
-  const canUseStt = () => sim?.mode === 'ai' && voice?.capabilities?.transcription?.available;
-  const useServerVoice = () => sim?.mode === 'ai' && voice?.capabilities?.speech?.available;
+  const canUseStt = () => Boolean(voice?.capabilities?.transcription?.available);
+  const useServerVoice = () => Boolean(voice?.capabilities?.speech?.available);
   const lastGuest = () => [...(sim?.turns ?? [])].reverse().find((t) => t.role === 'guest')?.text ?? '';
 
   function setState(next, message = '') {
@@ -126,36 +126,33 @@ export function mountSim(root, { simId, voice, onFinished, onExit }) {
       <button class="btn btn-primary btn-block" data-finish>Ver mi corrección</button>`;
   }
 
+  function optionsHtml(attribute) {
+    return sim.demoOptions.map((o) => `<button class="option" ${attribute}="${esc(o)}">${esc(o)}${sim.demoPron?.[o] ? `<small class="option-pron">${esc(sim.demoPron[o])}</small>` : ''}</button>`).join('');
+  }
+
   function inputHtml() {
     if (pending) {
       return `<div class="card card-hl stack">
-        <label class="field">Esto fue lo que escuchamos<textarea class="input" rows="3" data-transcript spellcheck="false" autocapitalize="sentences">${esc(pending)}</textarea></label>
-        <p class="small muted">Revisa nombres de platos, cantidades y palabras como «no». Puedes corregir el texto antes de enviarlo. La transcripción no evalúa tu pronunciación.</p>
-        <div class="row"><button class="btn btn-primary grow" data-confirm-yes>Sí, enviar</button><button class="btn grow" data-confirm-no>Repetir</button></div>
+        <p class="small muted">Se entendió:</p>
+        <p class="en">${esc(pending)}</p>
+        ${pendingClip ? `<button class="btn btn-help btn-block" data-play-own>${icons.sound}Escuchar mi grabación</button>` : ''}
+        <div class="row"><button class="btn btn-primary grow" data-confirm-yes>Enviar</button><button class="btn grow" data-confirm-no>Repetir</button></div>
       </div>`;
     }
-    if (demoRecording) {
+    if ((demoRecording || pickOnly) && sim.mode === 'demo') {
       return `<div class="card card-hl stack">
-        <p><b>Listo.</b> Aquí la app no revisa tu voz: elige lo más parecido a lo que dijiste, o escríbelo.</p>
-        <button class="btn btn-help btn-block" data-play-own>${icons.sound}Escuchar mi grabación</button>
-        ${sim.demoOptions.map((o) => `<button class="option" data-demo-option="${esc(o)}">${esc(o)}</button>`).join('')}
-        <div class="row"><input class="input grow" data-text-input aria-label="Lo que dijiste" placeholder="O escríbelo" autocomplete="off"><button class="btn" data-send-text>Enviar</button></div>
+        <p>Toca lo más parecido a lo que quieres decir.</p>
+        ${demoRecording ? `<button class="btn btn-help btn-block" data-play-own>${icons.sound}Escuchar mi grabación</button>` : ''}
+        ${optionsHtml('data-demo-option')}
         <button class="linkbtn" data-discard>Volver a grabar</button>
       </div>`;
     }
     const micArea = `<div class="mic-wrap">
-        ${canUseStt() ? '' : '<p class="small muted center">Opcional: decirlo en voz alta. Tu grabación se queda en este dispositivo y no se evalúa.</p>'}
         <button class="mic" data-mic aria-label="Hablar">${icons.talk}</button>
         <div class="mic-state" data-mic-state role="status"></div>
       </div>`;
-    const textRow = `<div class="stack" style="gap:8px">
-        <label class="field" for="sim-text">Tu respuesta en inglés</label>
-        <div class="row"><input class="input grow" id="sim-text" data-text-input placeholder="Escribe aquí" autocomplete="off" autocapitalize="sentences" value="${esc(draft)}"><button class="btn btn-primary" data-send-text>Enviar</button></div>
-      </div>`;
-    const examples = sim.mode === 'demo' ? `<details class="card card-quiet"><summary>Ver respuestas de ejemplo</summary><div class="stack">${sim.demoOptions.map((o) => `<button class="option" data-demo-option="${esc(o)}">${esc(o)}</button>`).join('')}</div></details>` : '';
-    // Sin transcripcion conectada, la practica principal es por texto.
-    if (!canUseStt()) return `${textRow}${examples}${micArea}`;
-    return `${failedRecording ? '<button class="btn btn-help btn-block" data-retry-upload>Reintentar el envío de mi audio</button><p class="small muted">Conservamos esta grabación solo en memoria mientras sigues aquí.</p>' : ''}${micArea}${showText ? `${textRow}${examples}` : '<button class="linkbtn center" data-show-text>No puedo hablar ahora: responder por texto</button>'}`;
+    const examples = sim.mode === 'demo' ? `<section class="stack" aria-label="Ejemplos"><p class="eyebrow">Puedes decir (toca para oír)</p>${optionsHtml('data-say-option')}</section>` : '';
+    return `${failedRecording ? '<button class="btn btn-help btn-block" data-retry-upload>Reintentar el envío de mi audio</button>' : ''}${examples}${micArea}`;
   }
 
   function controlsHtml(help) {
@@ -178,7 +175,9 @@ export function mountSim(root, { simId, voice, onFinished, onExit }) {
     stopAudio();
     busy = true;
     pending = null;
+    pendingClip = null;
     demoRecording = null;
+    pickOnly = false;
     failedRecording = null;
     // El mismo intento conserva su identificador: reenviarlo tras un corte no duplica el turno.
     if (attempt?.text !== text) attempt = { text, id: newId() };
@@ -188,14 +187,13 @@ export function mountSim(root, { simId, voice, onFinished, onExit }) {
       sim = out.sim;
       hint = null;
       busy = false;
-      draft = '';
       attempt = null;
       state = 'idle';
       render();
       if (!destroyed) await play(lastGuest());
     } catch (err) {
       busy = false;
-      draft = text;
+      pending = text;
       state = 'error';
       errorMessage = `${err.message} Tu respuesta sigue aquí: vuelve a enviarla.`;
       render();
@@ -207,7 +205,7 @@ export function mountSim(root, { simId, voice, onFinished, onExit }) {
     if (state === 'recording') { await finishRecording(); return; }
     stopAudio();
     setState('permission');
-    recorder = new TurnRecorder({ maxMs: voice?.pilotFree ? 30000 : 60000, onAutoStop: finishRecording });
+    recorder = new TurnRecorder({ maxMs: voice?.pilotFree ? 30000 : 60000, stopOnSilenceMs: 1700, onAutoStop: () => { if (state === 'recording') finishRecording(); } });
     try {
       const startingRecorder = recorder;
       await startingRecorder.start();
@@ -217,7 +215,7 @@ export function mountSim(root, { simId, voice, onFinished, onExit }) {
       recTimer = setInterval(renderStatus, 1000);
     } catch (err) {
       recorder = null;
-      showText = true;
+      pickOnly = true;
       state = 'error';
       errorMessage = err.message;
       render();
@@ -232,7 +230,7 @@ export function mountSim(root, { simId, voice, onFinished, onExit }) {
     let out;
     try { out = await stoppingRecorder.stop(); } catch (err) {
       recorder = null;
-      if (!destroyed) { showText = true; state = 'error'; errorMessage = err.message; render(); }
+      if (!destroyed) { pickOnly = true; state = 'error'; errorMessage = err.message; render(); }
       return;
     }
     recorder = null;
@@ -248,9 +246,8 @@ export function mountSim(root, { simId, voice, onFinished, onExit }) {
       state = 'idle';
       render();
     } else {
-      showText = true;
       state = 'error';
-      errorMessage = 'La transcripción no está conectada. Escribe tu respuesta.';
+      errorMessage = 'La revisión de voz no está conectada.';
       render();
     }
   }
@@ -267,15 +264,17 @@ export function mountSim(root, { simId, voice, onFinished, onExit }) {
       if (destroyed || controller.signal.aborted) return;
       if (r.status === 'silence' || r.status === 'unclear' || !r.text?.trim()) {
         failedRecording = null;
-        state = 'error'; errorMessage = 'No entendimos bien el audio. Vuelve a grabarlo o responde por texto.';
-        showText = true; render(); return;
+        state = 'error'; errorMessage = 'No entendimos bien el audio. Vuelve a grabarlo.';
+        render(); return;
       }
       pending = r.text;
+      pendingClip = out;
       failedRecording = null;
       state = 'idle'; render();
     } catch (err) {
       if (destroyed || controller.signal.aborted) return;
-      showText = true; state = 'error'; errorMessage = err.message; render();
+      if (sim.mode === 'demo') { demoRecording = out; failedRecording = null; }
+      state = 'error'; errorMessage = err.message; render();
     } finally {
       if (uploadController === controller) uploadController = null;
     }
@@ -288,27 +287,13 @@ export function mountSim(root, { simId, voice, onFinished, onExit }) {
     }));
     on('[data-mic]', toggleMic);
     on('[data-stop-audio]', stopAudio);
-    on('[data-show-text]', () => { showText = true; render(); root.querySelector('[data-text-input]')?.focus(); });
-    on('[data-send-text]', () => {
-      const v = root.querySelector('[data-text-input]')?.value.trim();
-      if (!v) { toast('Escribe tu respuesta primero.'); return; }
-      submitText(v, 'text');
-    });
-    root.querySelector('[data-text-input]')?.addEventListener('input', (e) => { draft = e.target.value; });
-    root.querySelector('[data-text-input]')?.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.isComposing) root.querySelector('[data-send-text]')?.click();
-    });
     on('[data-demo-option]', (e) => submitText(e.currentTarget.dataset.demoOption, 'text'));
-    on('[data-play-own]', () => { if (demoRecording) playLocal(demoRecording.blob).catch(() => toast('No se pudo reproducir.')); });
-    on('[data-discard]', () => { demoRecording = null; render(); });
-    on('[data-confirm-yes]', () => {
-      const text = root.querySelector('[data-transcript]')?.value.trim();
-      if (!text) { toast('Revisa el texto antes de enviarlo.'); return; }
-      submitText(text, 'audio');
-    });
-    root.querySelector('[data-transcript]')?.addEventListener('input', (e) => { pending = e.target.value; });
+    on('[data-say-option]', (e) => play(e.currentTarget.dataset.sayOption));
+    on('[data-play-own]', () => { const clip = pendingClip ?? demoRecording; if (clip) playLocal(clip.blob).catch(() => toast('No se pudo reproducir.')); });
+    on('[data-discard]', () => { demoRecording = null; pickOnly = false; render(); });
+    on('[data-confirm-yes]', () => { if (pending) submitText(pending, 'audio'); });
     on('[data-retry-upload]', () => { if (failedRecording) uploadRecording(failedRecording); });
-    on('[data-confirm-no]', () => { pending = null; render(); });
+    on('[data-confirm-no]', () => { pending = null; pendingClip = null; render(); });
     on('[data-replay]', () => { if (state !== 'recording') play(lastGuest()); });
     on('[data-slow]', () => { if (state !== 'recording') play(lastGuest(), true); });
     on('[data-toggle-transcript]', () => { showTranscript = !showTranscript; render(); });
@@ -348,7 +333,7 @@ export function mountSim(root, { simId, voice, onFinished, onExit }) {
   function cleanup() {
     playId += 1;
     uploadController?.abort(); uploadController = null;
-    failedRecording = null; demoRecording = null;
+    failedRecording = null; demoRecording = null; pendingClip = null;
     clearInterval(recTimer);
     recorder?.abort();
     recorder = null;

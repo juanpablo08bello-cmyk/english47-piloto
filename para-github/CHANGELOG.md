@@ -1,5 +1,14 @@
 # Registro de cambios
 
+## 0.5.2-piloto (2026-11-06)
+
+- Hablar es solo por voz: sin cuadros para escribir, también en el resumen. La app entiende lo que dijiste y los ejemplos se tocan para oírlos. Si no hay micrófono, se elige una respuesta tocándola.
+- Botón para escuchar tu propia grabación en Mesas, Mejorar y Hablar. Vive solo en memoria mientras sigues en esa pantalla.
+- Mesas retira las ayudas por nivel: 1 con todo, 2 sin pronunciación, 3 solo en español y 4 solo el objetivo. Todo queda a un toque y el modelo se muestra al responder. La revisión sigue comparando con la frase modelo; si no coincide en un intento sin ayuda, se muestra el modelo sin marcarlo como error.
+- Apartado en Mesas, Mejorar y Hablar: la pronunciación escrita es solo una ayuda y lo importante es aprender la palabra en inglés.
+- Pronunciación revisada palabra por palabra; las escrituras dudosas se eligieron midiendo con Azure una voz en español que las lee.
+- Pronunciación escrita en español bajo cada frase que se dice en Mesas y Mejorar, y en las respuestas de ejemplo de Hablar (`content/pronunciacion.js`). Es aproximada; el modelo sigue siendo el audio.
+
 ## 0.5.1-piloto (2026-11-06)
 
 - Avisos técnicos en Administración, dentro de Comentarios: audio bloqueado, micrófono, voz o errores de pantalla, con el tipo de teléfono. Un aviso por tipo y día; solo códigos conocidos, sin audio ni texto del alumno.

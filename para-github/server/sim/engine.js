@@ -6,6 +6,7 @@
 //  - completed: se recorrio la escena respondiendo a la situacion.
 //  - resolved: ademas se cumplieron sus criterios esenciales.
 //  «Para reforzar» lista lo que debe reaparecer, sea cual sea el resultado.
+import { pronounce } from '../../content/pronunciacion.js';
 import { tx } from '../db.js';
 import { localDate } from '../dates.js';
 import { award, grantAchievement, RULES } from '../progress.js';
@@ -74,6 +75,7 @@ export function publicSim(sim, keepQuotes) {
     waiterTurns: state.turns.filter((t) => t.role === 'waiter').length,
     goal: sim.help_mode === 'help' && !state.done ? beat.goal : null,
     demoOptions: !state.done && sim.mode === 'demo' ? beat.options : null,
+    demoPron: !state.done && sim.mode === 'demo' ? Object.fromEntries(beat.options.map((o) => [o, pronounce(o)])) : null,
     summary: sanitizeSummary(sim.summary, keepQuotes),
     comfort: sim.comfort,
   };

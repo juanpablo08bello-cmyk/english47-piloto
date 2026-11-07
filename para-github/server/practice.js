@@ -7,6 +7,8 @@ import { getSession } from './daily.js';
 import { normalize, tokens, typoKind } from './text.js';
 import { checkLimit, logUsage } from './voice/index.js';
 import { FRASES, FRASE_BY_ID, PACK_SIZE, TOPICS } from '../content/frases.js';
+import { goalFor } from '../content/objetivos.js';
+import { pronounce } from '../content/pronunciacion.js';
 import { ACCENTS, AZURE_VOICES, MOODS, VOICES, buildMesa, levelFor, mesaKey, recentFrom } from '../content/mesas.js';
 
 const IMPROVE_SIZE = 4;
@@ -231,7 +233,7 @@ const tipOf = (attempt) => (!attempt ? 0 : attempt.selfCheck ? 1 : attempt.stars
 
 function publicMesa(mesa) {
   const { steps, ...rest } = mesa;
-  return { ...rest, steps: steps.map(({ keep, linked, ...s }) => s) };
+  return { ...rest, steps: steps.map(({ keep, linked, ...s }) => ({ ...s, say: { ...s.say, pron: pronounce(s.say.en), goal: goalFor(s.say) } })) };
 }
 
 export async function generateMesa(db, user, now, rng = Math.random) {
@@ -321,7 +323,7 @@ export async function improveHome(db, user, now) {
     improve.attempts = 0;
     await save(db, user, session, now);
   }
-  return { items: improve.items, done: improve.done };
+  return { items: improve.items.map((x) => ({ ...x, pron: pronounce(x.en) })), done: improve.done };
 }
 
 export async function improveAttempt(db, user, { index, heard, selfCheck, assessment }, now) {

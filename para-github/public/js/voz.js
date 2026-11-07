@@ -29,6 +29,13 @@ export function bindWords(box, voice) {
   }));
 }
 
+/** Deja claro que la pronunciación escrita es una ayuda: lo que se aprende es la palabra en inglés. */
+export const pronNote = () => `<aside class="pron-note">
+    <b>Sobre la pronunciación</b>
+    <p>Lo que ves entre / / es cómo suena, con letras del español. Es solo una ayuda: <b>lo importante es aprender la palabra en inglés.</b></p>
+    <p class="pron-example"><span>water</span> se escribe así · <span class="say-pron-mini">/ uóter /</span> así suena</p>
+  </aside>`;
+
 export const micProblem = () => {
   const s = micSupport();
   return s.ok ? null : (MIC_HELP[s.code] ?? s.message);
@@ -127,6 +134,8 @@ export function mountMic(root, { voice, onResult, label = 'Toca y habla', assess
   paint('idle');
   return {
     reset: () => paint('idle'),
+    hasClip: () => Boolean(lastClip),
+    playLast: () => (lastClip ? playLocal(lastClip.blob).catch(() => {}) : null),
     destroy: () => { aborted = true; recorder?.abort(); recorder = null; },
   };
 }
@@ -137,7 +146,9 @@ export const starsHtml = (n) => `<div class="stars" role="img" aria-label="${n} 
 const CHEERS = { 3: '¡Excelente!', 2: '¡Muy bien!', 1: '¡Vas bien! Otra vez', 0: 'Otra vez, tranquilo' };
 
 /** Resultado de la frase guía: palabras en verde o por mejorar, sin juzgar el acento. */
-export function resultHtml(r, heard = '', extra = '') {
+export function resultHtml(r, heard = '', extra = '', { compare = false } = {}) {
+  // Sin haber visto la frase, otras palabras también pueden estar bien: no se castiga, se muestra el modelo.
+  if (compare) return `<div class="result"><p class="result-title">Compáralo con el modelo</p><p class="heard">Hay otras formas de decirlo. La app revisa esta: dila para ganar la propina.</p>${extra ? `<div class="row-center">${extra}</div>` : ''}</div>`;
   if (r.selfCheck) return `<div class="result"><p class="result-title">¡Listo!</p>${extra ? `<div class="row-center">${extra}</div>` : ''}</div>`;
   return `<div class="result">
     ${starsHtml(r.stars)}
@@ -151,10 +162,11 @@ export function resultHtml(r, heard = '', extra = '') {
 }
 
 /** Con 0 estrellas, repetir es lo principal. Nunca se bloquea: siempre se puede seguir. */
-export function resultActions(r, nextLabel = 'Seguir') {
+export function resultActions(r, nextLabel = 'Seguir', hasClip = false) {
   const again = !r.selfCheck && r.stars === 0;
-  return `<div class="result-actions">
+  return `<div class="result-actions ${hasClip ? 'has-clip' : ''}">
     <button class="btn ${again ? 'btn-primary' : ''}" id="retry">Otra vez</button>
+    ${hasClip ? `<button class="btn" id="me" aria-label="Escuchar mi grabación">${icons.sound}Mi voz</button>` : ''}
     <button class="btn ${again ? '' : 'btn-primary'}" id="next">${esc(nextLabel)}</button>
   </div>`;
 }

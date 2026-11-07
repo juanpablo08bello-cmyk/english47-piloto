@@ -3,11 +3,39 @@
 import { api, confetti, esc, icons, playSfx, reportIssue, statIcons } from './core.js';
 import { capybara } from './capybara.js';
 import { preloadSpeech, stopPlayback } from './audio.js';
-import { bindWords, micProblem, mountMic, resultActions, resultHtml, say, showAudioBlocked, starsHtml } from './voz.js';
+import { bindWords, micProblem, mountMic, pronNote, resultActions, resultHtml, say, showAudioBlocked, starsHtml } from './voz.js';
 
 const HUES = ['coral', 'lilac', 'mint', 'pink'];
 const hueOf = (name) => HUES[[...name].reduce((n, ch) => n + ch.charCodeAt(0), 0) % HUES.length];
 const avatar = (p, extra = '') => `<span class="avatar avatar-${hueOf(p.name)} ${extra}" id="guest-avatar" aria-hidden="true">${esc(p.name[0])}</span>`;
+// Cada nivel da menos ayuda de entrada; lo demás queda a un toque, en este orden.
+const HELP = {
+  1: { label: 'Di esto', shown: ['en', 'pron', 'es'], ladder: [], intro: 'Con toda la ayuda' },
+  2: { label: 'Di esto', shown: ['en', 'es'], ladder: ['pron'], intro: 'La pronunciación queda a un toque' },
+  3: { label: 'Dilo en inglés', shown: ['es'], ladder: ['en', 'pron'], intro: 'Ves la frase en español y la dices en inglés' },
+  4: { label: 'Tu objetivo', shown: ['goal'], ladder: ['es', 'en', 'pron'], intro: 'Ves el objetivo y luego comparas con la frase modelo' },
+};
+const HELP_BUTTON = { es: 'Ver en español', en: 'Ver la frase en inglés', pron: 'Ver cómo suena' };
+const LEVEL_UP = { 2: 'Ahora la pronunciación queda a un toque', 3: 'Ahora ves la frase solo en español', 4: 'Ahora ves solo el objetivo' };
+
+/** Tarjeta del turno. Sin objetivo escrito cae en la frase en español: nunca queda vacía. */
+function turnCard(step, level, revealed) {
+  const help = HELP[level] ?? HELP[1];
+  const parts = new Set([...help.shown, ...revealed]);
+  if (parts.has('goal') && !step.say.goal) parts.add('es');
+  const next = help.ladder.find((x) => !parts.has(x));
+  const showsEnglish = parts.has('en');
+  return `<p class="eyebrow eyebrow-dark">${showsEnglish ? 'Di esto' : help.label}</p>
+    ${parts.has('goal') && step.say.goal ? `<p class="say-goal">${esc(step.say.goal)}</p>` : ''}
+    ${showsEnglish ? `<p class="say-en">${esc(step.say.en)}</p>` : ''}
+    ${parts.has('pron') && step.say.pron ? `<p class="say-pron" lang="es">${esc(step.say.pron)}</p>` : ''}
+    ${parts.has('es') ? `<p class="${showsEnglish ? 'say-es' : 'say-goal'}">${esc(step.say.es)}</p>` : ''}
+    <div class="row-wrap">
+      ${showsEnglish ? `<button class="btn btn-ink btn-sm" id="model">${icons.sound}Escuchar cómo se dice</button>` : ''}
+      ${next ? `<button class="btn btn-ink btn-sm" id="reveal">${HELP_BUTTON[next]}</button>` : ''}
+    </div>`;
+}
+
 const tipFor = (attempt) => (!attempt ? 0 : attempt.selfCheck ? 1 : attempt.stars);
 
 async function startNewMesa() {
@@ -35,6 +63,7 @@ export async function viewMesas(ctx) {
       <div><b>3</b><span>Habla</span></div>
     </div>` : ''}
     <p class="small muted center">Tu voz va a Microsoft Azure para revisarla y la app no la guarda. Los pedidos y las propinas son de práctica.</p>
+    ${pronNote()}
     <p id="err" class="notice notice-amber" hidden role="alert"></p>
   </div>`, { tab: '#/mesas' });
   main.querySelector('#gen').addEventListener('click', async (e) => {
@@ -105,10 +134,27 @@ export async function viewMesaAtender(ctx) {
           <span class="chip chip-table">${esc(mesa.persona.moodEs)}</span>
         </div>
         <p class="muted">${mesa.steps.length} turnos · nivel ${mesa.level}</p>
+        <p class="help-level">${esc((HELP[mesa.level] ?? HELP[1]).intro)}</p>
       </div>
       <button class="btn btn-primary btn-xxl btn-block" id="go">Atender</button>`;
     preloadTurn(index);
     main.querySelector('#go').addEventListener('click', turn);
+  };
+
+  let revealed = new Set();
+  let helpUsed = false;
+  // Dibuja solo la tarjeta: abrir una ayuda no interrumpe al cliente ni al micrófono.
+  const paintCard = (step) => {
+    const card = main.querySelector('#card');
+    card.innerHTML = turnCard(step, mesa.level, revealed);
+    card.querySelector('#model')?.addEventListener('click', () => say(step.say.en, voice).catch(() => {}));
+    card.querySelector('#reveal')?.addEventListener('click', () => {
+      const help = HELP[mesa.level] ?? HELP[1];
+      const next = help.ladder.find((x) => ![...help.shown, ...revealed].includes(x));
+      if (next) revealed.add(next);
+      helpUsed = true;
+      paintCard(step);
+    });
   };
 
   const turn = () => {
@@ -129,17 +175,14 @@ export async function viewMesaAtender(ctx) {
         </div>
       </div>
       <p class="small muted center" id="voicenote" hidden>Ahora suena con la voz de tu teléfono, sin acento.</p>
-      <div class="yourturn">
-        <p class="eyebrow eyebrow-dark">Di esto</p>
-        <p class="say-en">${esc(step.say.en)}</p>
-        <p class="say-es">${esc(step.say.es)}</p>
-        <button class="btn btn-ink btn-sm" id="model">${icons.sound}Escuchar cómo se dice</button>
-      </div>
+      <div class="yourturn" id="card"></div>
       <div id="micbox"></div>
       <div id="result"></div>`;
     main.querySelector('#again').addEventListener('click', () => speakGuest(step));
     main.querySelector('#slow').addEventListener('click', () => speakGuest(step, true));
-    main.querySelector('#model').addEventListener('click', () => say(step.say.en, voice).catch(() => {}));
+    revealed = new Set();
+    helpUsed = false;
+    paintCard(step);
     mic = mountMic(main.querySelector('#micbox'), { voice, onResult: (r) => heard(step, r), assessQuery: { tipo: 'mesa', id: mesa.id, index } });
     speakGuest(step);
     window.scrollTo(0, 0);
@@ -163,8 +206,15 @@ export async function viewMesaAtender(ctx) {
       }
       // El micrófono se aparta: el resultado y "Seguir" quedan a la vista sin bajar la pantalla.
       micBox.hidden = true;
-      const extra = `${earned[index] > before ? `<span class="chip chip-coin">+$${earned[index] - before}</span>` : ''}${combo >= 2 ? `<span class="chip chip-combo">${statIcons.flame}${combo} seguidas</span>` : ''}`;
-      box.innerHTML = `${resultHtml(result, text, extra)}${resultActions(result, index + 1 < mesa.steps.length ? 'Seguir' : 'Terminar')}`;
+      // Lo que se quitó de la vista se muestra al responder: siempre se ve el modelo.
+      const noHelp = !helpUsed && mesa.level > 1 && !selfCheck && result.stars >= 2;
+      const compare = !helpUsed && mesa.level >= 3 && !selfCheck && result.stars <= 1;
+      helpUsed = true; // Ya vio el modelo: el siguiente intento se revisa como normal.
+      ['en', 'pron', 'es'].forEach((x) => revealed.add(x));
+      paintCard(step);
+      const extra = `${earned[index] > before ? `<span class="chip chip-coin">+$${earned[index] - before}</span>` : ''}${noHelp ? '<span class="chip chip-combo">Sin ayuda</span>' : ''}${combo >= 2 ? `<span class="chip chip-combo">${statIcons.flame}${combo} seguidas</span>` : ''}`;
+      box.innerHTML = `${resultHtml(result, text, extra, { compare })}${resultActions(result, index + 1 < mesa.steps.length ? 'Seguir' : 'Terminar', mic?.hasClip())}`;
+      box.querySelector('#me')?.addEventListener('click', () => mic?.playLast());
       bindWords(box, voice);
       box.querySelector('#retry').addEventListener('click', () => { box.innerHTML = ''; micBox.hidden = false; });
       box.querySelector('#next').addEventListener('click', advance);
@@ -196,7 +246,7 @@ export async function viewMesaAtender(ctx) {
       main.innerHTML = `<div class="stage center">
           ${capybara({ mood: 'celebrate', size: 112, equipped: ctx.state.me?.equipped, label: 'Capibara celebrando' })}
           <h1 class="display">${out.levelUp ? `¡Nivel ${out.progress.level}!` : s.perfect ? '¡Mesa perfecta!' : '¡Mesa atendida!'}</h1>
-          ${out.levelUp ? '<p class="scene-title">Mesas nuevas y más largas</p>' : ''}
+          ${out.levelUp ? `<p class="scene-title">${esc(LEVEL_UP[out.progress.level] ?? 'Mesas nuevas y más largas')}</p>` : ''}
           <p class="guest-en">${esc(mesa.closing.en)}</p>
           <p class="muted">${esc(mesa.closing.es)}</p>
           ${s.selfCheck ? '' : starsHtml(s.stars)}

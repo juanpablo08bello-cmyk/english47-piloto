@@ -251,7 +251,22 @@ a { color: var(--action); font-weight: 800; }
 .guest-es { font-size: 15px; font-weight: 700; color: var(--text-2); margin-top: 4px; }
 .yourturn { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 18px 20px; border-radius: 26px; background: var(--action); color: var(--ink); animation: pop .22s ease-out .08s backwards; }
 .say-en { font-size: clamp(25px, 7.5vw, 34px); line-height: 1.08; font-weight: 1000; letter-spacing: -0.02em; }
+.say-pron, .phrase-pron, .option-pron, .word-pron { font-weight: 700; letter-spacing: 0.015em; }
+.say-pron::before, .phrase-pron::before, .option-pron::before, .word-pron::before { content: "/\00a0"; opacity: .55; }
+.say-pron::after, .phrase-pron::after, .option-pron::after, .word-pron::after { content: "\00a0/"; opacity: .55; }
+.say-pron { font-size: 18px; line-height: 1.3; color: #4d4000; margin: 2px 0 4px; }
 .say-es { font-size: 16px; font-weight: 800; }
+.say-goal { font-size: clamp(23px, 7vw, 30px); line-height: 1.15; font-weight: 900; letter-spacing: -0.01em; }
+.help-level { font-size: 16px; font-weight: 800; color: var(--action); text-align: center; }
+.pron-note { display: flex; flex-direction: column; gap: 6px; padding: 16px 18px; border-radius: 22px; background: var(--surface); font-size: 15px; font-weight: 700; line-height: 1.35; color: var(--text-2); }
+.pron-note > b { font-size: 16px; font-weight: 900; color: var(--text); }
+.pron-note p b { color: var(--action); font-weight: 900; }
+.pron-example span { font-weight: 900; color: var(--text); }
+.pron-example .say-pron-mini { color: var(--action); }
+.phrase-pron { font-size: 20px; line-height: 1.3; color: var(--action); margin: 10px 0 8px; }
+.word-pron { font-size: 18px; line-height: 1.3; color: var(--action); margin-top: 6px; }
+.option-pron { display: block; margin-top: 6px; font-size: 15px; line-height: 1.3; color: var(--action); }
+.option.is-right .option-pron, .option.is-wrong .option-pron { color: var(--ink); }
 .iconbtn.iconbtn-fill { background: var(--table); color: var(--ink); }
 .slow-mark { font-weight: 1000; font-size: 14px; }
 
@@ -383,6 +398,8 @@ label.field { display: flex; flex-direction: column; gap: 6px; font-weight: 800;
 .tip-total small { font-size: 13px; font-weight: 800; margin-top: 4px; }
 .result-actions { display: grid; grid-template-columns: 1fr 1.6fr; gap: 10px; }
 .result-actions .btn { min-height: 60px; font-size: 19px; }
+.result-actions.has-clip { grid-template-columns: 1fr 1fr 1.3fr; }
+.result-actions.has-clip .btn { padding: 8px 6px; font-size: 16px; }
 .is-speaking { animation: speaking .7s ease-in-out infinite; }
 @keyframes speaking { 50% { transform: scale(1.1); } }
 .confetti { position: fixed; inset: 0; z-index: 70; overflow: hidden; pointer-events: none; }
