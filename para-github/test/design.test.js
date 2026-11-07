@@ -38,7 +38,7 @@ test('las secciones de voz no ofrecen escritura y la de texto no usa audio', () 
   }
   const voz = readFileSync('public/js/voz.js', 'utf8');
   assert.doesNotMatch(voz, /<input|<textarea/);
-  assert.match(voz, /Compáralo con el modelo/, 'un intento sin ayuda con otras palabras no se marca como error');
+  assert.match(voz, /Podrías decirlo así/, 'un intento sin ayuda con otras palabras no se marca como error');
   for (const file of ['sim.js', 'voice-lab.js']) assert.doesNotMatch(readFileSync(`public/js/${file}`, 'utf8'), /<textarea|<input(?![^>]*checkbox)/, `${file} permite escribir`);
   const aprender = readFileSync('public/js/aprender.js', 'utf8');
   assert.doesNotMatch(aprender, /audio\.js|voz\.js|speak|Recorder/);

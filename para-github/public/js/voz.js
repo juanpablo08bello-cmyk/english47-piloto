@@ -170,7 +170,7 @@ const CHEERS = { 5: '¡Excelente!', 4: '¡Muy bien!', 3: '¡Bien!', 2: '¡Vas bi
 /** Resultado de la frase guía: palabras en verde o por mejorar, sin juzgar el acento. */
 export function resultHtml(r, heard = '', extra = '', { compare = false, title = null } = {}) {
   // Sin haber visto la frase, otras palabras también pueden estar bien: no se castiga, se muestra el modelo.
-  if (compare) return `<div class="result"><p class="result-title">Compáralo con el modelo</p><p class="heard">Hay otras formas de decirlo. La app revisa esta: dila para ganar la propina.</p>${extra ? `<div class="row-center">${extra}</div>` : ''}</div>`;
+  if (compare) return `<div class="result"><p class="result-title">Podrías decirlo así</p><p class="heard">Mira la frase de arriba y escúchala. Tócale a «Otra vez» si quieres ganar más propina.</p>${extra ? `<div class="row-center">${extra}</div>` : ''}</div>`;
   if (r.selfCheck) return `<div class="result"><p class="result-title">¡Listo!</p>${extra ? `<div class="row-center">${extra}</div>` : ''}</div>`;
   return `<div class="result">
     ${starsHtml(r.stars)}

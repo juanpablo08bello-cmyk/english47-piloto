@@ -130,7 +130,8 @@ const DYNAMIC = [
 ];
 
 /** Devuelve el objetivo de una frase del alumno, o null si no existe uno escrito. */
-export function goalFor({ en, es }) {
+export function goalFor({ en, es, goal }) {
+  if (goal) return goal;
   if (Object.hasOwn(GOALS, en)) return GOALS[en];
   const dynamic = DYNAMIC.find(([re]) => re.test(en));
   return dynamic ? dynamic[1](es) : null;

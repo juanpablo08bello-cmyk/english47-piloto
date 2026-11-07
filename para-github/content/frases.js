@@ -120,4 +120,4 @@ const topicOrder = new Map(TOPIC_LIST.map((t, i) => [t.id, i]));
 export const FRASES = [...BASE, ...FRASES_MAS, ...FRASES_NUEVAS].sort((a, b) => topicOrder.get(a.topic) - topicOrder.get(b.topic));
 export const FRASE_BY_ID = new Map(FRASES.map((x) => [x.id, x]));
 export const TOPICS = TOPIC_LIST;
-export const PACK_SIZE = 5;
+export const PACK_SIZE = 4;

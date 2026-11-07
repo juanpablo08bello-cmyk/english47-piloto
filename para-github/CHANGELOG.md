@@ -1,5 +1,23 @@
 # Registro de cambios
 
+## 1.2.0
+
+- Diccionario VIP dentro de Aprender palabras: tablas largas por tema, con buscador, cómo suena, y verbos en presente, pasado, futuro y -ing. Se toca una palabra para oírla.
+- Temas ahora son juegos con esas palabras: parejas, significado, armar la palabra y pasados de verbos. Cuentan para la meta del día.
+- Generar frases prioriza frases con las palabras ya practicadas en los Temas.
+- Revisión de voz: entiende palabras de igual sentido, ignora muletillas y una palabra mal dicha no llega a 5 estrellas.
+- Más práctica simplificada: Mesas clásicas y Diagnóstico salen del menú.
+
+## 1.1.0
+
+- Mesas: conversaciones nuevas y más cortas (3 a 6 turnos), con muchos saludos y formas de responder, y 37 situaciones. Se ve lo último que dijiste, y el cliente tiene nombre.
+- Turnos sin frase a la vista: valen varias respuestas correctas y decirlo con otras palabras.
+- Meta diaria: 2 tandas, 2 mesas y 2 audios o situaciones.
+- Propinas: cada estrella vale $2, para que las mesas cortas sigan alcanzando para comprar.
+- Aprender palabras: tandas de 4 frases en menos pantallas; las palabras ya vistas no se repiten y quedan en Mis palabras.
+- Escuchar: sobre todo frases de clientes, con voces de muchos países. Pronunciar: más situaciones.
+- Hasta 7 alumnos.
+
 ## 1.0.0
 
 - Temporada nueva: todo el juego empieza desde cero para todas las cuentas (racha, XP, monedas, propinas, mesas, dificultad, frases vistas, logros, compras y protectores). Se quedan las cuentas y no se borran datos.

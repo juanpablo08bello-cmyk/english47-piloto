@@ -11,10 +11,11 @@ import { missingWords, pronounce } from '../content/pronunciacion.js';
 import { SCENARIOS } from '../content/scenarios.js';
 import { ACCENTS, buildMesa, LEVELS, levelFor, mesaKey, MOODS, recentFrom, SCENE_IDS, VOICES } from '../content/mesas.js';
 import { allVariants, SITUATIONS } from '../content/pronunciar.js';
-import { answerFits, assignHelp, mesaTip, replyResult } from '../server/practice.js';
+import { answerFits, assignHelp, mesaTip, openTurnResult, replyResult } from '../server/practice.js';
 import { LEVEL_NAMES, SHOP_ITEMS, xpLevel } from '../server/progress.js';
 import { seasonKey, setSeason } from '../server/season.js';
 import { readFileSync } from 'node:fs';
+import { VIP_BY_ID, VIP_TABLES, vipWord } from '../content/diccionario.js';
 import { loadConfig } from '../server/config.js';
 
 test('cada frase se explica entera y en orden, palabra por palabra', () => {
@@ -77,11 +78,12 @@ test('el generador varía mucho y siempre guía con frases seguras', () => {
       }
       const confirm = mesa.steps.find((s) => s.kind === 'confirm');
       if (confirm && mesa.scene !== 'agotado') assert.ok(confirm.say.en.includes(mesa.menuFacts.main), 'confirma el plato pedido');
-      if (mesa.scene === 'alergia') assert.ok(mesa.steps.some((s) => /check with the kitchen/.test(s.say.en)), 'una alergia siempre se consulta');
+      if (mesa.scene === 'alergia') assert.ok(mesa.steps.some((s) => /kitchen|chef/.test(s.say.en)), 'una alergia siempre se consulta');
+      assert.ok(!mesa.steps.some((s) => /promise|sure it is/i.test(s.say.en)), 'nunca se promete nada');
     }
   }
   assert.deepEqual([...scenes].sort(), [...SCENE_IDS].sort(), 'todas las situaciones aparecen');
-  assert.ok(SCENE_IDS.length >= 20);
+  assert.ok(SCENE_IDS.length >= 30);
   assert.ok(scripts.size >= 3000, `solo ${scripts.size} guiones distintos`);
 });
 
@@ -254,7 +256,7 @@ test('Aprender palabras: paga una vez, cuenta para la racha y genera tandas al a
   assert.equal(home.total, FRASES.length);
   assert.equal((await api('POST', '/api/aprender/terminar')).status, 404, 'no se termina sin abrir');
   const first = (await api('POST', '/api/aprender/generar')).data;
-  assert.equal(first.pack.length, 5);
+  assert.equal(first.pack.length, 4);
   assert.ok(first.pack[0].words.length > 0);
   assert.equal(first.distractors.length, 20);
   const done = await api('POST', '/api/aprender/terminar');
@@ -264,7 +266,7 @@ test('Aprender palabras: paga una vez, cuenta para la racha y genera tandas al a
   const again = await api('POST', '/api/aprender/terminar');
   assert.equal(again.data.plan.learn.count, 1, 'terminar dos veces la misma tanda no cuenta doble');
   assert.equal(again.data.stats.current, 0, 'una tanda no suma a la racha');
-  assert.equal((await api('GET', '/api/aprender')).data.seen, 5);
+  assert.equal((await api('GET', '/api/aprender')).data.seen, 4);
   // Muchas tandas seguidas: nada reciente se repite y salen frases de muchos temas.
   const seen = new Set(first.pack.map((p) => p.id));
   const topics = new Set();
@@ -276,7 +278,7 @@ test('Aprender palabras: paga una vez, cuenta para la racha y genera tandas al a
   assert.equal((await api('GET', '/api/today')).data.plan.learn.count, 1, 'generar más no borra lo ya hecho');
   const topic = (await api('POST', '/api/aprender/generar', { tema: 'cuenta' })).data;
   assert.ok(topic.pack.every((p) => p.topic === 'cuenta'));
-  for (let i = 0; i < 12; i++) assert.equal((await api('POST', '/api/aprender/generar', { tema: 'cuenta' })).data.pack.length, 5, 'un tema nunca se queda sin frases');
+  for (let i = 0; i < 12; i++) assert.equal((await api('POST', '/api/aprender/generar', { tema: 'cuenta' })).data.pack.length, 4, 'un tema nunca se queda sin frases');
   await app.stop();
 });
 
@@ -364,9 +366,9 @@ test('Escuchar: genera audios sin fin, compara con la frase y repetir no cuenta 
   const app = await startApp();
   const api = await login(app, 'ana');
   const lines = new Set();
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 1; i++) {
     const { item } = (await api('POST', '/api/mejorar/generar', { modo: 'escuchar' })).data;
-    assert.ok(item.en && item.es && item.pron, 'cada audio trae texto y cómo suena');
+    assert.ok(item.en && item.es, 'cada audio trae texto');
     assert.ok(item.persona.azure, 'cada audio trae una voz');
     assert.ok(!lines.has(item.en));
     lines.add(item.en);
@@ -381,19 +383,19 @@ test('Escuchar: genera audios sin fin, compara con la frase y repetir no cuenta 
   const newer = (await api('POST', '/api/mejorar/generar', { modo: 'escuchar' })).data.item;
   assert.equal((await api('POST', '/api/mejorar/intento', { id: old.id, heard: 'x' })).status, 404, 'un audio viejo ya no cuenta');
   const sixth = (await api('POST', '/api/mejorar/intento', { id: newer.id, heard: newer.en })).data;
-  assert.equal(sixth.daily.rewards.xp, 10, 'al sexto se paga la sección');
+  assert.equal(sixth.daily.rewards.xp, 10, 'al segundo se paga la sección');
   assert.equal(sixth.daily.rewards.newDay, false, 'solo esta sección no suma a la racha');
   assert.equal((await hacerAudios(api, 1)).daily, null, 'no paga otra vez');
   await app.stop();
 });
 
-test('la racha pide 2 tandas, 2 mesas y 6 audios, en cualquier orden, y paga una sola vez', async () => {
+test('la racha pide 2 tandas, 2 mesas y 2 audios, en cualquier orden, y paga una sola vez', async () => {
   const app = await startApp();
   const api = await login(app, 'ana');
   const racha = async () => (await api('GET', '/api/today')).data.stats.current;
   await hacerTandas(api, 1);
   await hacerMesas(api, 1);
-  await hacerAudios(api, 5);
+  await hacerAudios(api, 1);
   assert.equal(await racha(), 0, 'justo antes de cada meta todavía no');
   assert.equal(app.db.prepare('SELECT COUNT(*) n FROM streak_days').get().n, 0);
   const tandas = await hacerTandas(api, 1);
@@ -426,7 +428,7 @@ test('el ranking ordena por racha y propinas, y solo muestra nombre y puntaje', 
   const beto = await login(app, 'beto');
   await hacerTandas(ana, 2);
   await hacerMesas(ana, 2);
-  await hacerAudios(ana, 6);
+  await hacerAudios(ana, 2);
   await hacerMesas(beto, 1);
   const seenByBeto = (await beto('GET', '/api/ranking')).data;
   assert.deepEqual(seenByBeto.streak.map((r) => [r.pos, r.value]), [[1, 1], [2, 0]]);
@@ -446,8 +448,8 @@ test('la propina suma cada estrella y la mesa perfecta da bono', () => {
   const steps = (n) => Array.from({ length: n }, () => ({}));
   const all = (n, a) => Object.fromEntries(steps(n).map((_, i) => [i, a]));
   for (const n of [4, 7, 10]) {
-    assert.deepEqual(mesaTip(steps(n), all(n, { stars: 5 })), { tip: n * 5 + 5, perfect: true });
-    assert.deepEqual(mesaTip(steps(n), all(n, { stars: 4 })), { tip: n * 4, perfect: false });
+    assert.deepEqual(mesaTip(steps(n), all(n, { stars: 5 })), { tip: n * 10 + 5, perfect: true });
+    assert.deepEqual(mesaTip(steps(n), all(n, { stars: 4 })), { tip: n * 8, perfect: false });
     assert.equal(mesaTip(steps(n), all(n, { stars: 0, selfCheck: true })).tip, n * 2, 'sin revisión vale poco');
     assert.equal(mesaTip(steps(n), {}).tip, 0);
   }
@@ -499,7 +501,7 @@ test('la temporada nueva pone todo en cero sin borrar ni tocar nada más', async
     const { id } = app.db.prepare("SELECT id FROM users WHERE username='ana'").get();
     await hacerTandas(ana, 2);
     await hacerMesas(ana, 2);
-    await hacerAudios(ana, 6);
+    await hacerAudios(ana, 2);
     await hacerMesas(beto, 1);
     app.db.prepare('INSERT INTO reward_events (user_id, key, xp, coins, created_at) VALUES (?,?,0,500,?)').run(id, 'extra', '2026-11-05T14:00:00.000Z');
     assert.equal((await ana('POST', '/api/shop/buy', { itemId: 'hat_cap', requestId: 'x' })).status, 200);
@@ -560,7 +562,7 @@ test('la temporada nueva pone todo en cero sin borrar ni tocar nada más', async
 
     // Se puede volver a ganar todo el mismo día, sin que lo anterior lo bloquee.
     await hacerTandas(ana, 2);
-    await hacerAudios(ana, 6);
+    await hacerAudios(ana, 2);
     const done = await hacerMesas(ana, 2);
     assert.equal(done.rewards.newDay, true);
     assert.equal(done.plan.allDone, true);
@@ -568,13 +570,13 @@ test('la temporada nueva pone todo en cero sin borrar ni tocar nada más', async
     assert.equal(done.stats.xp, 40);
     const tips = (await ana('GET', '/api/today')).data.mesas.tips;
     assert.equal(done.stats.coins, 20 + tips - 120, 'las monedas ganadas, menos la gorra');
-    assert.equal((await ana('GET', '/api/aprender')).data.seen, 10, 'cuenta las frases vistas de nuevo');
+    assert.equal((await ana('GET', '/api/aprender')).data.seen, 8, 'cuenta las frases vistas de nuevo');
     assert.ok(done.rewards.achievements.length >= 0);
     assert.ok((await ana('GET', '/api/profile')).data.achievements.some((a) => a.earnedAt), 'y vuelve a ganar logros');
     // Y al otro día la racha sigue.
     app.clockBox.now += 86400000;
     await hacerTandas(ana, 2);
-    await hacerAudios(ana, 6);
+    await hacerAudios(ana, 2);
     const second = await hacerMesas(ana, 2);
     assert.equal(second.stats.current, 2);
     assert.equal(second.stats.xp, 80);
@@ -589,7 +591,7 @@ test('la temporada nueva pone todo en cero sin borrar ni tocar nada más', async
 test('la racha: días seguidos suman, saltar un día la corta y el protector la salva', async () => {
   const app = await startApp();
   const api = await login(app, 'ana');
-  const dia = async () => { await hacerTandas(api, 2); await hacerAudios(api, 6); return (await hacerMesas(api, 2)).stats.current; };
+  const dia = async () => { await hacerTandas(api, 2); await hacerAudios(api, 2); return (await hacerMesas(api, 2)).stats.current; };
   const { id } = app.db.prepare("SELECT id FROM users WHERE username='ana'").get();
   assert.equal(await dia(), 1);
   app.clockBox.now += 86400000;
@@ -641,14 +643,200 @@ test('el azar: día tras día salen ejercicios que no se han visto', async () =>
 test('el azar: al acabarse las frases nuevas sigue habiendo tandas', async () => {
   const app = await startApp();
   const api = await login(app, 'ana');
-  for (let i = 0; i < FRASES.length / 5 + 3; i++) {
+  for (let i = 0; i < FRASES.length / 4 + 3; i++) {
     const { pack } = (await api('POST', '/api/aprender/generar')).data;
-    assert.equal(pack.length, 5);
-    assert.equal(new Set(pack.map((p) => p.id)).size, 5);
+    assert.equal(pack.length, 4);
+    assert.equal(new Set(pack.map((p) => p.id)).size, 4);
     await api('POST', '/api/aprender/terminar');
   }
   assert.equal((await api('GET', '/api/aprender')).data.seen, FRASES.length, 'las vio todas antes de repetir');
   await app.stop();
+});
+
+test('turno sin frase a la vista: vale cualquier forma correcta y decirlo con otras palabras', () => {
+  const step = { show: 'free', say: { en: 'Welcome in! Right this way, please.', es: 'x', alts: ['Welcome in! Right this way, please.', 'Hi, welcome! Please follow me.'] } };
+  const word = (w) => ({ word: w, accuracy: 90, error: 'None' });
+  const other = openTurnResult(step, { assessment: { text: 'Hi, welcome! Please follow me.', score: 92, words: ['hi', 'welcome', 'please', 'follow', 'me'].map(word) } });
+  assert.equal(other.matched, true);
+  assert.equal(other.stars, 5, 'otra forma correcta vale las 5 estrellas');
+  const free = openTurnResult(step, { assessment: { text: 'Welcome, please follow me to your table.', score: 80, words: ['welcome', 'please', 'follow', 'me', 'to', 'your', 'table'].map(word) } });
+  assert.equal(free.matched, true, 'con sus propias palabras también vale');
+  assert.equal(free.stars, 4);
+  const off = openTurnResult(step, { assessment: { text: 'Purple elephants dance.', score: 95, words: ['purple', 'elephants', 'dance'].map(word) } });
+  assert.equal(off.matched, false);
+  assert.equal(off.stars, 1, 'una respuesta sin relación no da propina completa');
+  assert.ok(off.model);
+  const noAzure = openTurnResult(step, { heard: 'Hi, welcome! Please follow me.' });
+  assert.equal(noAzure.matched, true);
+  assert.ok(noAzure.stars >= 3);
+});
+
+test('las mesas varían de verdad: muchos saludos, respuestas y aperturas', () => {
+  const greetings = new Set();
+  const opens = new Set();
+  const says = new Set();
+  const scenes = new Set();
+  for (let i = 0; i < 6000; i++) {
+    const m = buildMesa(Math.random, { done: 20 });
+    opens.add(m.steps[0].guest.en);
+    scenes.add(m.scene);
+    if (m.steps[0].kind === 'greet') greetings.add(m.steps[0].say.en);
+    for (const s of m.steps) {
+      assert.ok(s.say.goal, `sin objetivo: ${s.say.en}`);
+      assert.ok(s.say.alts?.includes(s.say.en), s.say.en);
+      says.add(s.say.en);
+    }
+  }
+  assert.ok(greetings.size >= 20, `solo ${greetings.size} formas de saludar`);
+  assert.ok(opens.size >= 60, `solo ${opens.size} aperturas`);
+  assert.ok(says.size >= 180, `solo ${says.size} respuestas`);
+  assert.ok(scenes.size >= 30);
+});
+
+test('en un turno abierto la respuesta correcta no viaja al alumno', async () => {
+  const app = await startApp();
+  const api = await login(app, 'ana');
+  await hacerMesas(api, 2);
+  let found = false;
+  for (let i = 0; i < 8 && !found; i++) {
+    const { mesa } = (await api('POST', '/api/mesas/generar')).data;
+    assert.ok(mesa.steps.every((s) => s.say.alts === undefined), 'las alternativas se quedan en el servidor');
+    const index = mesa.steps.findIndex((s) => s.show === 'free');
+    if (index >= 0) {
+      found = true;
+      const right = (await api('POST', `/api/mesas/${mesa.id}/turno`, { index, heard: mesa.steps[index].say.en })).data.result;
+      assert.equal(right.matched, true);
+      const wrong = (await api('POST', `/api/mesas/${mesa.id}/turno`, { index, heard: 'purple elephants dance tonight' })).data.result;
+      assert.equal(wrong.matched, false);
+    }
+  }
+  assert.ok(found, 'hay turnos abiertos desde la tercera mesa');
+  await app.stop();
+});
+
+test('Aprender palabras: tanda por tanda, ninguna palabra se repite', async () => {
+  const app = await startApp();
+  const api = await login(app, 'ana');
+  const shown = new Set();
+  for (let i = 0; i < 15; i++) {
+    const { pack } = (await api('POST', '/api/aprender/generar')).data;
+    for (const frase of pack) for (const [en] of frase.fresh) {
+      const key = tokens(en).join(' ');
+      assert.ok(!shown.has(key), `palabra repetida: ${en}`);
+      shown.add(key);
+    }
+    await api('POST', '/api/aprender/terminar');
+  }
+  assert.ok(shown.size > 40, `solo ${shown.size} palabras nuevas`);
+  const { learned } = (await api('GET', '/api/aprender')).data;
+  assert.ok(learned.length > 30, 'quedan guardadas en Mis palabras');
+  assert.equal(new Set(learned.map(([en]) => en.toLowerCase())).size, learned.length);
+  await app.stop();
+});
+
+test('Escuchar da sobre todo frases de clientes y siempre traducidas', async () => {
+  const app = await startApp();
+  const api = await login(app, 'ana');
+  const who = { cliente: 0, mesero: 0 };
+  for (let i = 0; i < 40; i++) {
+    const { item } = (await api('POST', '/api/mejorar/generar', { modo: 'escuchar' })).data;
+    assert.ok(item.en && item.es);
+    assert.doesNotMatch(item.en + item.es, /undefined|\{|\}/);
+    who[item.who] += 1;
+  }
+  assert.ok(who.cliente > who.mesero, JSON.stringify(who));
+  await app.stop();
+});
+
+test('Diccionario VIP: tablas largas, sin repetidos y verbos bien conjugados', () => {
+  assert.ok(VIP_TABLES.length >= 14);
+  let total = 0;
+  for (const table of VIP_TABLES) {
+    assert.ok(table.title && table.desc, table.id);
+    assert.ok(table.rows.length >= 20, `${table.id}: ${table.rows.length} filas`);
+    total += table.rows.length;
+    const seen = new Set();
+    for (const row of table.rows) {
+      const word = vipWord(table, row);
+      assert.ok(!seen.has(word.toLowerCase()), `${table.id}: repetida ${word}`);
+      seen.add(word.toLowerCase());
+      assert.ok(row.es, `${word}: falta español`);
+      assert.ok(table.kind === 'verbs' ? row.presentPron && row.pastPron : row.pron, `${word}: falta cómo suena`);
+      assert.doesNotMatch(JSON.stringify(row), /undefined/);
+    }
+  }
+  assert.ok(total >= 450, `solo ${total} palabras`);
+  const verb = (v) => VIP_BY_ID.get('verbos').rows.find((r) => r.present === v);
+  assert.deepEqual([verb('go').third, verb('go').past, verb('go').future, verb('go').ing, verb('go').irregular], ['goes', 'went', 'will go', 'going', true]);
+  assert.deepEqual([verb('serve').third, verb('serve').past, verb('serve').ing, verb('serve').irregular], ['serves', 'served', 'serving', false]);
+  assert.deepEqual([verb('stop').past, verb('stop').ing, verb('stop').irregular], ['stopped', 'stopping', false]);
+  assert.deepEqual([verb('try').third, verb('try').past, verb('try').ing, verb('try').irregular], ['tries', 'tried', 'trying', false]);
+  assert.deepEqual([verb('have').third, verb('have').past, verb('have').ing], ['has', 'had', 'having']);
+  assert.deepEqual([verb('sit').ing, verb('get').ing, verb('run').ing, verb('put').ing], ['sitting', 'getting', 'running', 'putting']);
+  assert.deepEqual([verb('be').third, verb('be').ing, verb('be').future], ['is', 'being', 'will be']);
+  assert.deepEqual([verb('pay').third, verb('enjoy').third, verb('wash').third, verb('see').ing, verb('make').ing], ['pays', 'enjoys', 'washes', 'seeing', 'making']);
+  assert.ok(VIP_BY_ID.get('verbos').rows.filter((r) => r.irregular).length >= 35);
+  // Las frases practican estas palabras.
+  const dictionary = new Set(VIP_TABLES.flatMap((t) => t.rows.flatMap((r) => tokens(vipWord(t, r)))));
+  const covered = FRASES.filter((f) => tokens(f.en).some((w) => dictionary.has(w))).length;
+  assert.ok(covered / FRASES.length > 0.95, `solo ${covered} de ${FRASES.length} frases usan el diccionario`);
+});
+
+test('Temas: un juego usa palabras del diccionario, cuenta para el día y prefiere las no practicadas', async () => {
+  const app = await startApp();
+  const api = await login(app, 'ana');
+  assert.equal((await api('POST', '/api/aprender/tema', { tema: 'inventado' })).status, 404);
+  assert.equal((await api('POST', '/api/aprender/tema/terminar')).status, 404, 'no se termina sin abrir');
+  const home = (await api('GET', '/api/aprender')).data;
+  assert.equal(home.themes.length, VIP_TABLES.length);
+  assert.ok(home.themes.every((t) => t.seen === 0 && t.total >= 15));
+  const practiced = new Set();
+  for (let i = 0; i < 3; i++) {
+    const { words, pool, theme } = (await api('POST', '/api/aprender/tema', { tema: 'bebidas' })).data;
+    assert.equal(theme.title, 'Bebidas');
+    assert.equal(words.length, 8);
+    assert.ok(pool.length >= 20);
+    for (const w of words) { assert.ok(!practiced.has(w.en), `repetida antes de tiempo: ${w.en}`); practiced.add(w.en); assert.ok(w.es && w.pron); assert.notEqual(w.en.toLowerCase(), w.es.toLowerCase(), 'no se juega con palabras iguales'); }
+    const out = (await api('POST', '/api/aprender/tema/terminar')).data;
+    assert.equal(out.plan.learn.count, i + 1);
+    if (i === 1) assert.equal(out.rewards.xp, 10, 'dos juegos cumplen la sección');
+    const twice = (await api('POST', '/api/aprender/tema/terminar')).data;
+    assert.equal(twice.plan.learn.count, i + 1, 'terminar dos veces no cuenta doble');
+  }
+  assert.equal((await api('GET', '/api/aprender')).data.themes.find((t) => t.id === 'bebidas').seen, 24);
+  const verbs = (await api('POST', '/api/aprender/tema', { tema: 'verbos' })).data;
+  assert.equal(verbs.theme.kind, 'verbs');
+  assert.ok(verbs.words.every((w) => w.en && w.es && w.past));
+  assert.ok((await api('GET', '/api/vip')).data.tables.length >= 14);
+  await app.stop();
+});
+
+test('Generar frases usa las palabras que ya se practicaron en los Temas', async () => {
+  const app = await startApp();
+  const api = await login(app, 'ana');
+  for (let i = 0; i < 6; i++) {
+    await api('POST', '/api/aprender/tema', { tema: 'bebidas' });
+    await api('POST', '/api/aprender/tema/terminar');
+  }
+  const { pack } = (await api('POST', '/api/aprender/generar')).data;
+  const withWords = pack.filter((p) => p.practiced.length);
+  assert.ok(withWords.length >= 3, `solo ${withWords.length} de 4`);
+  for (const p of withWords) for (const w of p.practiced) assert.ok(tokens(p.en).includes(w), `${w} no está en ${p.en}`);
+  await app.stop();
+});
+
+test('la revisión entiende palabras de igual sentido, ignora muletillas y es justa con la mala pronunciación', () => {
+  assert.equal(answerFits('The bathroom is in the back', [['restroom']]), true);
+  assert.equal(answerFits('Um, sure, I will grab it', [['of', 'sure'], ['bring']]), true);
+  assert.equal(answerFits('Here is your bill', [['check']]), true);
+  const step = { show: 'free', say: { en: "Of course. I'll bring it right away.", es: 'x', alts: ["Of course. I'll bring it right away."] } };
+  assert.equal(openTurnResult(step, { heard: 'um, of course, I will grab it right away' }).matched, true);
+  const word = (w, accuracy = 90) => ({ word: w, accuracy, error: 'None' });
+  const clean = openTurnResult(step, { assessment: { text: 'Of course, I will bring it right away.', score: 92, words: ['of', 'course', 'bring', 'it'].map((w) => word(w)) } });
+  assert.equal(clean.stars, 5);
+  const oneBad = openTurnResult(step, { assessment: { text: 'Of course, I will bring it right away.', score: 92, words: [word('of'), word('course'), word('bring', 20), word('it')] } });
+  assert.equal(oneBad.stars, 4, 'una palabra mal dicha no llega a 5');
+  assert.equal(oneBad.tip.word, 'bring');
 });
 
 test('la temporada de producción está definida y las claves la llevan', () => {
@@ -702,10 +890,10 @@ test('datos de una versión anterior: racha, propinas y jornada a medias siguen 
   for (const [index, step] of open.steps.entries()) assert.equal((await api('POST', `/api/mesas/${open.id}/turno`, { index, heard: step.say.en })).status, 200);
   const end = (await api('POST', `/api/mesas/${open.id}/terminar`)).data;
   assert.equal(end.plan.tables.done, true);
-  assert.equal(end.summary.tip, open.steps.length * 5 + 5);
+  assert.equal(end.summary.tip, open.steps.length * 10 + 5);
   assert.equal((await api('POST', '/api/aprender/terminar')).status, 200, 'la tanda vieja se puede terminar');
   await hacerTandas(api, 1);
-  const last = await hacerAudios(api, 5);
+  const last = await hacerAudios(api, 1);
   assert.equal(last.daily.rewards.newDay, true);
   assert.equal((await api('GET', '/api/today')).data.stats.current, 3, 'al cumplir la meta nueva, la racha sigue subiendo');
   const rank = (await api('GET', '/api/ranking')).data;

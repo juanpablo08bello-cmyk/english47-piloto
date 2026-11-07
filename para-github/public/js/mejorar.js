@@ -18,7 +18,7 @@ export async function viewMejorar(ctx) {
       <div class="grow"><h1 class="display display-long">Pronunciar y escuchar</h1><p class="hero-count"><b>${Math.min(data.attempts, data.goal)}/${data.goal}</b> de hoy</p></div>
       ${capybara({ mood: 'focus', size: 92, equipped: ctx.state.me?.equipped })}
     </header>
-    ${guideHtml('mejorar', ['Elige <b>Pronunciar</b> o <b>Escuchar</b>. Las dos cuentan igual.', 'Toca el micrófono, espera <b>Habla ahora</b> y di tu respuesta en inglés.', 'Recibes estrellas y puedes oír tu propia voz.', `Haz <b>${data.goal} al día</b> para cumplir esta sección. Puedes seguir todo lo que quieras.`])}
+    ${guideHtml('mejorar', ['<b>Escuchar</b> entrena tu oído con voces de clientes de muchos países. <b>Pronunciar</b> entrena tu voz: respondes con tus palabras.', 'Las dos cuentan igual. Toca el micrófono y espera <b>Habla ahora</b>.', 'Recibes estrellas y puedes oír tu propia voz.', `Haz <b>${data.goal} al día</b> para cumplir esta sección. Puedes seguir todo lo que quieras.`])}
     ${problem ? `<p class="notice notice-amber">${esc(problem)}</p>` : ''}
     <div class="modes">
       <a class="mode mode-speak" ${problem ? 'aria-disabled="true"' : 'href="#/mejorar/pronunciar"'}>
@@ -106,6 +106,7 @@ export async function viewMejorarJugar(ctx, mode) {
         <button class="ear" id="play" aria-label="Escuchar otra vez">${icons.sound}</button>
         <p class="small muted center">Tócalo otra vez para oírlo más lento</p>
         <div id="text" hidden>
+          <p class="eyebrow">${item.who === 'cliente' ? 'Esto dijo un cliente' : 'Esto dijo un mesero'}</p>
           <h1 class="phrase phrase-sm">${esc(item.en)}</h1>
           ${item.pron ? `<p class="phrase-pron" lang="es">${esc(item.pron)}</p>` : ''}
           <p class="phrase-es">${esc(item.es)}</p>

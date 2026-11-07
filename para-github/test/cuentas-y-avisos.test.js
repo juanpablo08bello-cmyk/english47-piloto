@@ -76,7 +76,7 @@ test('Hoy y Perfil muestran el nivel y las propinas de las mesas', async () => {
   for (const [index, step] of mesa.steps.entries()) await api('POST', `/api/mesas/${mesa.id}/turno`, { index, heard: step.say.en });
   const end = (await api('POST', `/api/mesas/${mesa.id}/terminar`)).data;
   assert.equal(end.summary.perfect, true);
-  assert.equal(end.summary.tip, mesa.steps.length * 5 + 5, 'cinco por turno más el bono');
+  assert.equal(end.summary.tip, mesa.steps.length * 10 + 5, 'diez por turno más el bono');
   const today = (await api('GET', '/api/today')).data.mesas;
   assert.equal(today.done, 1);
   assert.equal(today.tips, end.summary.tip);
@@ -99,7 +99,7 @@ test('las cuatro cuentas compiten en el ranking, también la que administra', as
     for (const [index, step] of mesa.steps.entries()) await juan('POST', `/api/mesas/${mesa.id}/turno`, { index, heard: step.say.en });
     await juan('POST', `/api/mesas/${mesa.id}/terminar`);
   }
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 2; i++) {
     const { item } = (await juan('POST', '/api/mejorar/generar', { modo: 'escuchar' })).data;
     await juan('POST', '/api/mejorar/intento', { id: item.id, heard: item.en });
   }

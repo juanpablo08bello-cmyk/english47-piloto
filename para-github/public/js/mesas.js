@@ -1,5 +1,5 @@
 // Mesas: solo voz. Genera una mesa al azar. En unos turnos se ve la frase en inglés; en otros se responde solo.
-// Cada turno da hasta 5 estrellas y cada estrella es $1 de propina, que se guarda en las monedas.
+// Cada turno da hasta 5 estrellas y cada estrella es $2 de propina, que se guarda en las monedas.
 import { api, confetti, esc, icons, playSfx, reportIssue, statIcons } from './core.js';
 import { capybara } from './capybara.js';
 import { bindGuide, guideHtml, guideSeen, markGuide } from './guia.js';
@@ -10,7 +10,7 @@ const HUES = ['coral', 'lilac', 'mint', 'pink'];
 const hueOf = (name) => HUES[[...name].reduce((n, ch) => n + ch.charCodeAt(0), 0) % HUES.length];
 const avatar = (p, extra = '') => `<span class="avatar avatar-${hueOf(p.name)} ${extra}" id="guest-avatar" aria-hidden="true">${esc(p.name[0])}</span>`;
 // Cada turno es de uno de dos tipos: con la frase en inglés a la vista, o para responder solo con pista.
-const LEVEL_UP = { 2: 'Más turnos los respondes tú', 3: 'Ahora casi la mitad los respondes tú', 4: 'Ahora casi todo lo respondes tú' };
+const LEVEL_UP = { 2: 'Más situaciones y más turnos con tus palabras', 3: 'Clientes más difíciles y casi la mitad con tus palabras', 4: 'Lo más difícil: casi todo con tus palabras' };
 const showOf = (step, level) => step.show ?? (level <= 2 ? 'en' : 'free');
 const firstWords = (en) => {
   const words = en.split(/\s+/);
@@ -28,9 +28,10 @@ function turnCard(step, level, revealed) {
   if (!free) parts.add('en');
   if (!free && level === 1) parts.add('pron');
   const showsEnglish = parts.has('en');
-  const next = ladderOf(step, level).find((x) => !parts.has(x));
-  const prompt = level >= 3 && step.say.goal ? step.say.goal : step.say.es;
-  return `<p class="eyebrow eyebrow-dark">${free && !showsEnglish ? 'Responde tú en inglés' : 'Tú dices'}</p>
+  // Con la frase a la vista, la pista ya no hace falta.
+  const next = ladderOf(step, level).find((x) => !parts.has(x) && !(x === 'hint' && showsEnglish));
+  const prompt = step.say.goal ?? step.say.es;
+  return `<p class="eyebrow eyebrow-dark">${free && !showsEnglish ? 'Responde con tus palabras' : 'Tú dices'}</p>
     ${free && !showsEnglish ? `<p class="say-goal">${esc(prompt)}</p>` : ''}
     ${free && !showsEnglish && parts.has('hint') ? `<p class="say-hint">${esc(firstWords(step.say.en))}</p>` : ''}
     ${showsEnglish ? `<p class="say-en">${esc(step.say.en)}</p>` : ''}
@@ -42,7 +43,7 @@ function turnCard(step, level, revealed) {
     </div>`;
 }
 
-const starsOf = (attempt) => (!attempt ? 0 : attempt.selfCheck ? 2 : attempt.stars);
+const starsOf = (attempt) => (!attempt ? 0 : attempt.selfCheck ? 1 : attempt.stars);
 
 async function startNewMesa() {
   await api('POST', '/api/mesas/generar');
@@ -62,7 +63,7 @@ export async function viewMesas(ctx) {
     </div>
     ${problem ? `<p class="notice notice-amber">${esc(problem)}</p>` : ''}
     <button class="btn btn-primary btn-xxl btn-block" id="gen" ${problem ? 'disabled' : ''}>${icons.plate}GENERAR MESA</button>
-    ${guideHtml('mesas', ['Toca <b>Generar mesa</b> y llega un cliente.', 'Lee y escucha lo que te dice.', 'Toca el <b>micrófono</b>, espera <b>Habla ahora</b> y responde en inglés.', 'Ganas hasta <b>5 estrellas</b> por turno. Cada estrella es <b>$1 de propina</b>, y tus propinas se guardan como monedas para la Tienda.', `Haz <b>${goal} mesas al día</b> para cumplir esta sección. Al atender más, sube la dificultad y verás menos ayuda.`])}
+    ${guideHtml('mesas', ['Toca <b>Generar mesa</b> y llega un cliente.', 'Lee y escucha lo que te dice.', 'Toca el <b>micrófono</b>, espera <b>Habla ahora</b> y responde en inglés.', 'Ganas hasta <b>5 estrellas</b> por turno. Cada estrella es <b>$2 de propina</b>, y tus propinas se guardan como monedas para la Tienda.', `Haz <b>${goal} mesas al día</b> para cumplir esta sección. Al atender más, sube la dificultad y verás menos ayuda.`])}
     ${mesa ? `<a class="btn btn-block" href="#/mesas/atender">${avatar(mesa.persona)}Seguir con ${esc(mesa.persona.name)}</a>` : ''}
     <p class="small muted center">Tu voz va a Microsoft Azure para revisarla y la app no la guarda. Los pedidos y las propinas son de práctica.</p>
     ${pronNote()}
@@ -98,7 +99,7 @@ export async function viewMesaAtender(ctx) {
   const earned = {};
   Object.entries(mesa.attempts ?? {}).forEach(([i, a]) => { earned[i] = starsOf(a); });
   // Misma cuenta que el servidor, sin el bono de mesa perfecta: ese llega al terminar.
-  const totalTip = () => Object.values(earned).reduce((n, v) => n + v, 0);
+  const totalTip = () => Object.values(earned).reduce((n, v) => n + v, 0) * 2;
   let combo = 0;
   let mic = null;
   const cleanup = () => { mic?.destroy(); mic = null; stopPlayback(); };
@@ -138,7 +139,7 @@ export async function viewMesaAtender(ctx) {
           <span class="chip chip-table">${esc(mesa.persona.moodEs)}</span>
         </div>
         <p class="muted">${mesa.steps.length} turnos · dificultad ${mesa.level}</p>
-        <p class="help-level">${mesa.steps.every((s) => showOf(s, mesa.level) === 'en') ? 'Te mostramos qué decir en cada turno' : 'En unos turnos ves la frase. En otros respondes tú: si te trabas, pide una pista'}</p>
+        <p class="help-level">${mesa.steps.every((s) => showOf(s, mesa.level) === 'en') ? 'Te mostramos qué decir en cada turno' : 'En unos turnos ves la frase. En otros respondes con tus palabras: hay varias formas correctas'}</p>
       </div>
       <button class="btn btn-primary btn-xxl btn-block" id="go">Atender</button>`;
     preloadTurn(index);
@@ -154,7 +155,7 @@ export async function viewMesaAtender(ctx) {
     card.querySelector('#model')?.addEventListener('click', () => sayModel(step.say.en, voice).catch(() => {}));
     card.querySelector('#reveal')?.addEventListener('click', () => {
       const shown = showOf(step, mesa.level) === 'en' ? ['en', ...revealed] : [...revealed];
-      const next = ladderOf(step, mesa.level).find((x) => !shown.includes(x));
+      const next = ladderOf(step, mesa.level).find((x) => !shown.includes(x) && !(x === 'hint' && shown.includes('en')));
       if (next) revealed.add(next);
       helpUsed = true;
       paintCard(step);
@@ -171,8 +172,9 @@ export async function viewMesaAtender(ctx) {
         <span class="tip-pill" id="tips" title="Propina de esta mesa">$${totalTip()}</span>
         ${avatar(mesa.persona)}
       </div>
+      ${index > 0 ? `<p class="turn-prev"><b>Tú:</b> ${esc(mesa.steps[index - 1].say.en)}</p>` : ''}
       <div class="guest">
-        <div class="grow"><p class="eyebrow">El cliente dice</p><p class="guest-en">${esc(step.guest.en)}</p><p class="guest-es">${esc(step.guest.es)}</p></div>
+        <div class="grow"><p class="eyebrow">${esc(mesa.persona.name)} dice</p><p class="guest-en">${esc(step.guest.en)}</p><p class="guest-es">${esc(step.guest.es)}</p></div>
         <button class="iconbtn iconbtn-fill" id="again" aria-label="Escuchar otra vez, más lento">${icons.sound}</button>
       </div>
       <p class="small muted center" id="voicenote" hidden>Ahora suena con la voz de tu teléfono, sin acento.</p>
@@ -201,7 +203,7 @@ export async function viewMesaAtender(ctx) {
       markGuide('mic');
       main.querySelector('#coach')?.remove();
       const free = showOf(step, mesa.level) === 'free';
-      const gained = selfCheck ? 2 : result.stars;
+      const gained = selfCheck ? 1 : result.stars;
       const before = totalTip();
       earned[index] = Math.max(earned[index] ?? 0, gained);
       const after = totalTip();
@@ -216,7 +218,8 @@ export async function viewMesaAtender(ctx) {
       micBox.hidden = true;
       // Lo que se quitó de la vista se muestra al responder: siempre se ve el modelo.
       const noHelp = free && !helpUsed && !selfCheck && result.stars >= 3;
-      const compare = free && !helpUsed && !selfCheck && result.stars <= 2;
+      // Si dijo otra cosa no se le regaña: se le muestra una forma de decirlo. Las mesas viejas no traen esta marca.
+      const compare = free && !selfCheck && (result.matched === false || (result.matched === undefined && !helpUsed && result.stars <= 2));
       helpUsed = true; // Ya vio el modelo: el siguiente intento se revisa como normal.
       ['en', 'pron', 'es'].forEach((x) => revealed.add(x));
       paintCard(step);

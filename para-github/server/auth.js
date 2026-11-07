@@ -2,7 +2,7 @@
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import { tx } from './db.js';
 
-export const MAX_STUDENTS = 5;
+export const MAX_STUDENTS = 7;
 const SESSION_MS = 1000 * 60 * 60 * 24 * 30;
 const INVITE_MS = 1000 * 60 * 60 * 24 * 7;
 const sha = (s) => createHash('sha256').update(s).digest('hex');

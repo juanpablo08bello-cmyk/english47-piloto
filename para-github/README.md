@@ -22,7 +22,7 @@ Al primer arranque, la consola muestra un enlace de un solo uso para crear la cu
 2. En **Invitar**, escribe para quién es y toca **Crear invitación**.
 3. Copia el enlace y envíalo por un canal privado. Sirve una vez, vence en 7 días y solo se muestra entonces.
 
-Hay un máximo de cinco alumnos. Pásale también [PARA_EL_PRIMO.md](PARA_EL_PRIMO.md). Sus comentarios llegan a **Administración → Comentarios**.
+Hay un máximo de siete alumnos. Pásale también [PARA_EL_PRIMO.md](PARA_EL_PRIMO.md). Sus comentarios llegan a **Administración → Comentarios**.
 
 Los enlaces usan la dirección desde la que abriste Administración: créalos desde la dirección pública, no desde `localhost`.
 
@@ -53,7 +53,7 @@ Las migraciones también dejan una copia automática en `data/`. **Todas las cop
 | Parte | Elección | Motivo |
 |---|---|---|
 | Servidor | Node sin framework (`server/`) | Pocas piezas que mantener |
-| Datos | SQLite incluido en Node (`node:sqlite`) | Sin servicio externo; basta para 5 alumnos en un servidor |
+| Datos | SQLite incluido en Node (`node:sqlite`) | Sin servicio externo; basta para 7 alumnos en un servidor |
 | Interfaz | JavaScript sin compilación (`public/`) | Un solo despliegue |
 | Contenido | Archivos en `content/` | El catálogo no depende de IA y se sirve por páginas. Para un menú real, sustituye `content/menu.js` |
 

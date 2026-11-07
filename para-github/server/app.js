@@ -23,7 +23,7 @@ import {
   closeAbandoned, countStoredQuotes, createSim, finishSim, hintFor, publicSim, removeStoredQuotes, rephrase, retryAttempt, setComfort, takeTurn,
 } from './sim/engine.js';
 import { checkLimit, logUsage, usageReport, voiceStatus } from './voice/index.js';
-import { currentMesa, finishLearn, finishMesa, generateImprove, generateLearn, generateMesa, getPlan, improveAttempt, improveHome, leaderboard, learnHome, mesaProgress, mesaTurn, speechPersona, speechTarget } from './practice.js';
+import { currentMesa, finishLearn, finishMesa, generateImprove, generateLearn, generateMesa, getPlan, improveAttempt, finishGame, generateGame, improveHome, leaderboard, learnHome, mesaProgress, vipTables, mesaTurn, speechPersona, speechTarget } from './practice.js';
 import { ProviderError } from './voice/providers.js';
 import { seasonGift, seasonKey, seasonStart } from './season.js';
 import { VOCAB, VOCAB_BY_ID } from '../content/vocab.js';
@@ -621,6 +621,12 @@ export function createApp({ db, config, services, clock = Date.now }) {
     const now = clock();
     return await practiceOut(user, now, fromResult(await finishLearn(db, user, now)));
   });
+  route('GET', '/api/vip', async () => vipTables());
+  route('POST', '/api/aprender/tema', async ({ user, body }) => fromResult(await generateGame(db, user, clock(), String(body.tema ?? ''))));
+  route('POST', '/api/aprender/tema/terminar', async ({ user }) => {
+    const now = clock();
+    return await practiceOut(user, now, fromResult(await finishGame(db, user, now)));
+  });
   route('GET', '/api/ranking', async ({ user }) => await leaderboard(db, user, clock()));
   route('GET', '/api/mesas', async ({ user }) => await currentMesa(db, user, clock()));
   route('POST', '/api/mesas/generar', async ({ user }) => await generateMesa(db, user, clock()));
@@ -834,7 +840,7 @@ export function createApp({ db, config, services, clock = Date.now }) {
     const student = await db.prepare("SELECT active FROM users WHERE role='student' AND id=?").get(id);
     if (!student) fail(404, 'not_found', 'No encontramos ese alumno.');
     if (body.active && !student.active && await activeStudents(db) + await pendingStudentInvites(db, clock()) >= MAX_STUDENTS) {
-      fail(409, 'seats_full', 'Las cinco plazas ya están ocupadas o reservadas.');
+      fail(409, 'seats_full', `Las ${MAX_STUDENTS} plazas ya están ocupadas o reservadas.`);
     }
     await db.prepare(`UPDATE users SET active=? WHERE id=? AND role='student'`).run(body.active ? 1 : 0, id);
     if (!body.active) await db.prepare('DELETE FROM sessions WHERE user_id=?').run(id);

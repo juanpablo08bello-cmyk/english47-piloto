@@ -54,9 +54,9 @@ test('sin sesion no hay datos; registro publico inexistente; invitacion de un so
   await app.stop();
 });
 
-test('maximo cinco alumnos', async () => {
+test('maximo siete alumnos', async () => {
   const app = await startApp();
-  for (const n of ['a1a', 'a2a', 'a3a', 'a4a', 'a5a']) await login(app, n);
+  for (const n of ['a1a', 'a2a', 'a3a', 'a4a', 'a5a', 'a6a', 'a7a']) await login(app, n);
   const r = await createInvitation(app.db, { role: 'student' }, app.clockBox.now);
   assert.equal(r.ok, false);
   assert.equal(r.code, 'seats_full');

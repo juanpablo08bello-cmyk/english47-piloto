@@ -9,6 +9,8 @@ import { pronNote } from './voz.js';
 import { viewMejorar, viewMejorarJugar } from './mejorar.js';
 import { viewRanking } from './ranking.js';
 import { viewTienda } from './tienda.js';
+import { viewVip } from './vip.js';
+import { viewJuego } from './juegos.js';
 import { bindGuide, foldHtml, guideHtml, guideSeen, markGuide } from './guia.js';
 import { modeBanner, mountSim } from './sim.js';
 import { mountVoiceLab } from './voice-lab.js';
@@ -422,7 +424,7 @@ async function viewDiagnostic(autoStart) {
 
 // --- Hoy ---
 const TODAY_STEPS = [
-  { key: 'learn', cls: 'today-learn', href: '#/aprender', title: 'Aprender palabras', sub: 'Lee frases y practícalas', unit: 'tandas' },
+  { key: 'learn', cls: 'today-learn', href: '#/aprender', title: 'Aprender palabras', sub: 'Frases, juegos y diccionario', unit: 'tandas o juegos' },
   { key: 'tables', cls: 'today-tables', href: '#/mesas', title: 'Mesas', sub: 'Atiende clientes hablando', unit: 'mesas' },
   { key: 'improve', cls: 'today-improve', href: '#/mejorar', title: 'Pronunciar y escuchar', sub: 'Entrena tu voz y tu oído', unit: 'audios o respuestas' },
 ];
@@ -475,28 +477,29 @@ async function viewToday() {
 
 /** Una sola vez: cuenta qué cambió, sobre todo que la temporada empezó desde cero. */
 function showWhatsNew(user) {
-  if (guideSeen('novedades-1') || overlay.querySelector('.news')) return;
+  if (guideSeen('novedades-1-2') || overlay.querySelector('.news')) return;
   const el = document.createElement('div');
   el.className = 'modal news';
   el.setAttribute('role', 'dialog');
-  el.setAttribute('aria-label', 'ENGLISH47 se actualizó');
+  el.setAttribute('aria-label', 'ENGLISH47 se actualizó a la versión 1.2');
   el.innerHTML = `<div class="modal-card news-card">
     ${capybara({ mood: 'celebrate', size: 132 })}
-    <p class="news-kicker">VERSIÓN 1.0</p>
+    <p class="news-kicker">VERSIÓN 1.2</p>
     <h2>¡ENGLISH47 se actualizó!</h2>
-    <p class="news-hello">¡Qué alegría verte, ${esc(user.displayName)}! Esto es lo nuevo:</p>
+    <p class="news-hello">¡Vas muy bien, ${esc(user.displayName)}! Lo mejoramos con lo que nos contaron:</p>
     <ul class="news-list">
-      <li>${statIcons.flame}<span><b>Todos desde cero:</b> arranca una competencia nueva.</span></li>
-      <li>${statIcons.coin}<span><b>Tus propinas ahora son monedas</b> para comprar.</span></li>
-      <li>${icons.store}<span><b>Tienda nueva:</b> 8 animales y mucha ropa.</span></li>
-      <li>${icons.trophy}<span><b>Ranking:</b> compite por el primer puesto.</span></li>
+      <li>${icons.plate}<span><b>Mesas como una conversación:</b> nuevos clientes, saludos y situaciones.</span></li>
+      <li>${icons.talk}<span><b>Responde a tu manera:</b> ahora valen varias respuestas correctas.</span></li>
+      <li>${icons.check}<span><b>Más corto y al grano:</b> tu meta es 2, 2 y 2 cada día.</span></li>
+      <li>${icons.book}<span><b>Diccionario VIP y juegos:</b> todas las palabras, y Temas para no olvidarlas.</span></li>
+      <li>${statIcons.flame}<span><b>Tu progreso sigue intacto.</b> ¡Sigue subiendo en el Ranking!</span></li>
     </ul>
     <button class="btn btn-primary btn-xl btn-block" id="news-go">¡A jugar!</button>
   </div>`;
   overlay.append(el);
   confetti();
   try { chime(); } catch { /* el teléfono puede bloquear el sonido hasta tocar */ }
-  el.querySelector('#news-go').addEventListener('click', () => { markGuide('novedades-1'); el.remove(); confetti(); });
+  el.querySelector('#news-go').addEventListener('click', () => { markGuide('novedades-1-2'); el.remove(); confetti(); });
 }
 
 function entryCard(v) {
@@ -1013,11 +1016,9 @@ async function viewProfile() {
         ${foldHtml({ title: 'Calendario', icon: statIcons.flame, meta: `${p.stats.practicedThisWeek} esta semana`, open: true, body: calendarHtml(p) })}
         ${foldHtml({ title: 'Logros', icon: icons.trophy, meta: `${earnedCount}/${p.achievements.length}`, body: `<div class="stack">${p.achievements.map((a) => `<div class="ach ${a.earnedAt ? 'earned' : ''}"><div class="ach-badge">${icons.trophy}</div><div class="grow"><b>${esc(a.name)}</b><p class="small muted">${esc(a.desc)}</p></div></div>`).join('')}</div>` })}
         ${foldHtml({ title: 'Más práctica', icon: icons.book, body: `<nav class="link-list" aria-label="Más práctica">
-          <a href="#/palabras">Diccionario</a>
+          <a href="#/palabras">Expresiones de servicio</a>
           <a href="#/ruta">Lecciones</a>
-          <a href="#/hablar">Mesas clásicas</a>
           <a href="#/voz">Probar micrófono</a>
-          <a href="#/diagnostico">Diagnóstico</a>
         </nav>` })}
         ${foldHtml({ title: 'Ajustes', icon: icons.info, body: `<div class="stack">
           <label class="field">Zona horaria<select class="input" id="tz">${timezones.map((t) => `<option ${t === p.user.timezone ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></label>
@@ -1175,6 +1176,8 @@ const ROUTES = [
   [/^#\/hoy$/, viewToday],
   [/^#\/aprender$/, () => viewAprender(ctx)],
   [/^#\/aprender\/jugar(?:\/(\w+))?$/, (topic) => viewAprenderJugar(ctx, topic)],
+  [/^#\/aprender\/vip$/, () => viewVip(ctx)],
+  [/^#\/aprender\/tema\/(\w+)$/, (tema) => viewJuego(ctx, tema)],
   [/^#\/mesas$/, () => viewMesas(ctx)],
   [/^#\/mesas\/atender$/, () => viewMesaAtender(ctx)],
   [/^#\/mejorar$/, () => viewMejorar(ctx)],

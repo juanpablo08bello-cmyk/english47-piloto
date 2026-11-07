@@ -8,6 +8,7 @@ import { normalize, tokens, typoKind } from './text.js';
 import { checkLimit, logUsage } from './voice/index.js';
 import { season, seasonKey, seasonStart } from './season.js';
 import { FRASES, FRASE_BY_ID, PACK_SIZE, TOPICS } from '../content/frases.js';
+import { VIP_BY_ID, VIP_TABLES, vipWord } from '../content/diccionario.js';
 import { goalFor } from '../content/objetivos.js';
 import { pronounce } from '../content/pronunciacion.js';
 import { buildReply, clientLine } from '../content/pronunciar.js';
@@ -15,9 +16,10 @@ import { ACCENTS, AZURE_VOICES, CAST, MOODS, VOICES, buildMesa, levelFor, mesaKe
 
 const RECENT_PHRASES = 60;
 // Para sumar a la racha hay que hacer esto en cada sección: tandas, mesas, y audios o situaciones.
-export const GOALS = { learn: 2, tables: 2, improve: 6 };
-// Cinco estrellas por turno. Cada estrella es $1 de propina y la propina se guarda en las monedas.
+export const GOALS = { learn: 2, tables: 2, improve: 2 };
+// Cinco estrellas por turno. Cada estrella es $2 de propina y la propina se guarda en las monedas.
 export const MAX_STARS = 5;
+export const TIP_PER_STAR = 2;
 export const PERFECT_BONUS = 5;
 const starsFromRatio = (ratio) => (ratio >= 0.95 ? 5 : ratio >= 0.8 ? 4 : ratio >= 0.6 ? 3 : ratio >= 0.35 ? 2 : ratio >= 0.15 ? 1 : 0);
 const starsFromScore = (score) => (score >= 90 ? 5 : score >= 75 ? 4 : score >= 60 ? 3 : score >= 40 ? 2 : score >= 20 ? 1 : 0);
@@ -115,12 +117,49 @@ export function assessedResult(target, assessment) {
   return { words, ratio: score / 100, stars, understood: score >= 60, tip, assessed: true, score: Math.round(score) };
 }
 
+const isOpenTurn = (step) => step.show === 'free' && Boolean(step.say.alts?.length);
+const CONTENT_STOP = new Set(['a', 'an', 'the', 'i', 'you', 'we', 'it', 'is', 'am', 'are', 'to', 'of', 'for', 'and', 'in', 'on', 'at', 'that', 'this', 'please', 'will', 'can', 'me', 'my', 'your', 'be']);
+// Para revisar por sentido: palabras que en esta conversación significan lo mismo y muletillas que no cuentan.
+const SAME_MEANING = { bathroom: 'restroom', washroom: 'restroom', toilet: 'restroom', bill: 'check', hello: 'hi', hey: 'hi', yeah: 'yes', yep: 'yes', certainly: 'sure', absolutely: 'sure', definitely: 'sure', bring: 'get', grab: 'get', fetch: 'get', apologize: 'sorry', apologies: 'sorry', pardon: 'sorry', second: 'moment', minute: 'moment', menus: 'menu', tables: 'table', drinks: 'drink', beverage: 'drink', thanks: 'thank', meal: 'food', dish: 'food', quickly: 'fast', quick: 'fast', kids: 'children', cook: 'chef', ask: 'check', see: 'check' };
+const FILLERS = new Set(['um', 'uh', 'umm', 'uhh', 'hmm', 'mmm', 'ah', 'eh', 'er', 'oh']);
+const sense = (text) => speechTokens(text).filter((w) => !FILLERS.has(w)).map((w) => SAME_MEANING[w] ?? w);
+const contentWords = (text) => sense(text).filter((w) => !CONTENT_STOP.has(w));
+
+/** Una palabra claramente mal dicha no deja llegar a las 5 estrellas, aunque el promedio sea alto. */
+const fairStars = (score, words) => Math.max(starsFromScore(score) - (words.some((x) => !x.ok) && score < 95 ? 1 : 0), score >= 20 ? 1 : 0);
+
+/**
+ * Turno sin frase a la vista: vale cualquiera de las formas correctas, o decir lo mismo con otras palabras.
+ * La revisión es por palabras: orienta, no entiende como una persona. Por eso nunca regaña; muestra el modelo.
+ */
+export function openTurnResult(step, { heard, assessment }) {
+  const text = assessment?.text ?? heard ?? '';
+  const options = step.say.alts;
+  const best = options.map((option) => ({ option, cmp: compareSpeech(option, text) })).sort((a, b) => b.cmp.ratio - a.cmp.ratio)[0];
+  const said = new Set(sense(text));
+  const overlap = Math.max(...options.map((option) => {
+    const wanted = contentWords(option);
+    return wanted.length ? wanted.filter((w) => said.has(w)).length / wanted.length : 0;
+  }));
+  const matched = best.cmp.ratio >= 0.6 || overlap >= 0.6;
+  if (!matched) return { words: [], ratio: best.cmp.ratio, stars: 1, understood: false, tip: null, matched: false, model: step.say.en, heard: text };
+  if (!assessment) return { ...best.cmp, stars: Math.max(best.cmp.stars, 3), understood: true, matched: true, model: best.option };
+  const words = (assessment.words ?? []).filter((w) => w.error !== 'Insertion').map((w) => ({ w: w.word, ok: w.accuracy >= 40, accuracy: Math.round(w.accuracy) }));
+  const score = assessment.score ?? 0;
+  const weakest = words.filter((x) => !x.ok).sort((a, b) => a.accuracy - b.accuracy)[0];
+  return { words, ratio: score / 100, stars: fairStars(score, words), understood: score >= 60, tip: weakest ? { word: weakest.w, text: tipFor(weakest.w) } : null, assessed: true, score: Math.round(score), matched: true, model: best.option };
+}
+
 /** La frase guía la decide el servidor: el alumno no puede cambiar contra qué se le evalúa. */
 export async function speechTarget(db, user, { tipo, id, index }, now) {
   const { practice } = (await load(db, user, now)).state;
   if (tipo === 'mesa') {
     const mesa = practice.tables.current;
-    return mesa && mesa.id === id && !mesa.finished ? mesa.steps[index]?.say.en ?? null : null;
+    if (!mesa || mesa.id !== id || mesa.finished) return null;
+    const step = mesa.steps[index];
+    if (!step) return null;
+    // Sin la frase a la vista, cualquier forma correcta vale: se evalúa lo que dijo, sin frase de referencia.
+    return isOpenTurn(step) ? '' : step.say.en;
   }
   if (tipo === 'mejorar') {
     const current = practice.improve.current;
@@ -200,7 +239,15 @@ function planOf(p) {
 }
 
 export async function getPlan(db, user, now) {
-  return planOf((await load(db, user, now)).state.practice);
+  const session = await load(db, user, now);
+  const { improve } = session.state.practice;
+  // Quien ya pasó la meta nueva con la anterior a medias no se queda sin su día.
+  if (!improve.paid && improve.attempts >= GOALS.improve) {
+    improve.paid = true;
+    await settle(db, user, session, 'p_improve', RULES.XP_REVIEW, now);
+    await save(db, user, session, now);
+  }
+  return planOf(session.state.practice);
 }
 
 const noRewards = () => ({ xp: 0, coins: 0, bonus: 0, newDay: false, achievements: [] });
@@ -227,6 +274,41 @@ async function seenPhrases(db, user) {
   return rows.map((r) => r.key.slice(prefix.length)).filter((id) => FRASE_BY_ID.has(id));
 }
 
+const wordKey = (en) => tokens(en).join(' ');
+const FILLER = new Set(['the', 'a', 'an', 'your', 'you', 'i', 'is', 'are', 'it', 'to', 'for', 'of', 'and', 'or', 'with', 'in', 'on', 'at', 'this', 'that', 'please', 'my', 'we']);
+const realWords = (frase) => frase.words.map(([en]) => wordKey(en)).filter((w) => !FILLER.has(w));
+
+/** Las palabras que ya vio no se repiten: cada frase muestra solo las nuevas. */
+function withFreshWords(pack, known) {
+  const seen = new Set(known);
+  return pack.map((frase) => {
+    const fresh = frase.words.filter(([en]) => {
+      const key = wordKey(en);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    return { ...frase, fresh };
+  });
+}
+
+/** Arma la tanda al azar evitando que dos frases compartan palabras importantes y prefiriendo las que enseñan algo nuevo. */
+function diversePack(candidates, knownWords, size) {
+  const picked = [];
+  const used = new Set();
+  const teachesNew = (x) => x.words.some(([en]) => !knownWords.has(wordKey(en)) && !FILLER.has(wordKey(en)));
+  const add = (test) => {
+    for (const x of candidates) {
+      if (picked.length >= size) return;
+      if (!picked.includes(x) && test(x)) { picked.push(x); realWords(x).forEach((w) => used.add(w)); }
+    }
+  };
+  add((x) => teachesNew(x) && !realWords(x).some((w) => used.has(w)));
+  add(teachesNew);
+  add(() => true);
+  return picked;
+}
+
 function samplePhrases(list, size, rng) {
   const pool = [...list];
   for (let i = pool.length - 1; i > 0; i--) {
@@ -236,15 +318,76 @@ function samplePhrases(list, size, rng) {
   return pool.slice(0, size);
 }
 
+// --- Temas: las palabras del Diccionario VIP en juegos ---
+const GAME_WORDS = 8;
+// Una palabra que se dice igual en los dos idiomas (mojito, pizza) no se juega: está en el diccionario y ya.
+const plainWord = (text) => String(text).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/^(el|la|los|las) /, '');
+const playable = (table) => table.rows.filter((r) => plainWord(vipWord(table, r)) !== plainWord(r.es));
+const publicRow = (table, row) => (table.kind === 'verbs'
+  ? { en: row.present, es: row.es, pron: row.presentPron, past: row.past }
+  : { en: row.en, es: row.es, pron: row.pron });
+
+async function practicedVip(db, user) {
+  const prefix = seasonKey('vip:');
+  const rows = await db.prepare('SELECT key FROM reward_events WHERE user_id=? AND key LIKE ?').all(user.id, `${prefix}%`);
+  return rows.map((r) => r.key.slice(prefix.length));
+}
+
+export const vipTables = () => ({ tables: VIP_TABLES });
+
+export async function generateGame(db, user, now, tema, rng = Math.random) {
+  const table = VIP_BY_ID.get(tema);
+  if (!table) return { error: 'not_found', message: 'Ese tema no existe.' };
+  const session = await load(db, user, now);
+  const seen = new Set((await practicedVip(db, user)).filter((k) => k.startsWith(`${tema}:`)).map((k) => k.slice(tema.length + 1)));
+  // Primero las que todavía no ha practicado, al azar.
+  const rows = playable(table);
+  const fresh = samplePhrases(rows.filter((r) => !seen.has(vipWord(table, r))), GAME_WORDS, rng);
+  const rest = samplePhrases(rows.filter((r) => !fresh.includes(r)), GAME_WORDS - fresh.length, rng);
+  const chosen = samplePhrases([...fresh, ...rest], GAME_WORDS, rng);
+  session.state.practice.learn.game = { tema, words: chosen.map((r) => vipWord(table, r)), counted: false };
+  await save(db, user, session, now);
+  return {
+    theme: { id: table.id, title: table.title, kind: table.kind ?? 'words' },
+    words: chosen.map((r) => publicRow(table, r)),
+    pool: rows.map((r) => publicRow(table, r)),
+  };
+}
+
+export async function finishGame(db, user, now) {
+  const session = await load(db, user, now);
+  const { learn } = session.state.practice;
+  const game = learn.game;
+  if (!game) return { error: 'not_found', message: 'Primero abre un tema.' };
+  for (const word of game.words) await award(db, user.id, seasonKey(`vip:${game.tema}:${word}`), {}, now);
+  if (!game.counted) { game.counted = true; learn.count += 1; }
+  const out = learn.count >= GOALS.learn
+    ? await settle(db, user, session, 'p_learn', RULES.XP_LESSON, now)
+    : { rewards: noRewards(), plan: planOf(session.state.practice) };
+  await save(db, user, session, now);
+  return out;
+}
+
 export async function learnHome(db, user, now) {
   const session = await load(db, user, now);
   const seen = await seenPhrases(db, user);
   const known = new Set(seen);
+  // Las palabras que va aprendiendo quedan guardadas para repasarlas cuando quiera.
+  const learned = new Map();
+  for (const id of seen) for (const [en, es] of FRASE_BY_ID.get(id).words) {
+    const key = wordKey(en);
+    if (!FILLER.has(key) && !learned.has(key)) learned.set(key, [en, es]);
+  }
   return {
+    learned: [...learned.values()],
     count: session.state.practice.learn.count,
     goal: GOALS.learn,
     seen: seen.length,
     total: FRASES.length,
+    themes: await (async () => {
+      const seenVip = new Set(await practicedVip(db, user));
+      return VIP_TABLES.map((t) => { const rows = playable(t); return { id: t.id, title: t.title, total: rows.length, seen: rows.filter((r) => seenVip.has(`${t.id}:${vipWord(t, r)}`)).length }; });
+    })(),
     topics: TOPICS.map((t) => {
       const list = FRASES.filter((x) => x.topic === t.id);
       return { ...t, total: list.length, seen: list.filter((x) => known.has(x.id)).length };
@@ -263,10 +406,16 @@ export async function generateLearn(db, user, now, topic = null, rng = Math.rand
   const known = new Set(await seenPhrases(db, user));
   const open = all.filter((x) => !recent.has(x.id));
   const unseen = open.filter((x) => !known.has(x.id));
-  const pick = samplePhrases(unseen, PACK_SIZE, rng);
+  const knownWords = new Set([...known].flatMap((id) => FRASE_BY_ID.get(id)?.words.map(([en]) => wordKey(en)) ?? []));
+  // Las frases practican lo que ya jugó en los Temas: primero las que usan esas palabras.
+  const vipKnown = new Set((await practicedVip(db, user)).flatMap((k) => tokens(k.slice(k.indexOf(':') + 1))).filter((w) => !FILLER.has(w)));
+  const usesPracticed = (x) => tokens(x.en).filter((w) => vipKnown.has(w));
+  const shuffled = samplePhrases(unseen, unseen.length, rng);
+  const ordered = [...shuffled.filter((x) => usesPracticed(x).length), ...shuffled.filter((x) => !usesPracticed(x).length)];
+  const pick = diversePack(ordered, knownWords, PACK_SIZE);
   const rest = samplePhrases(open.filter((x) => !pick.includes(x)), PACK_SIZE - pick.length, rng);
   const filler = samplePhrases(all.filter((x) => !pick.includes(x) && !rest.includes(x)), PACK_SIZE - pick.length - rest.length, rng);
-  const pack = samplePhrases([...pick, ...rest, ...filler], PACK_SIZE, rng);
+  const pack = withFreshWords(samplePhrases([...pick, ...rest, ...filler], PACK_SIZE, rng), knownWords).map((x) => ({ ...x, practiced: [...new Set(usesPracticed(x))].slice(0, 3) }));
   learn.pack = pack.map((x) => x.id);
   learn.topic = validTopic;
   learn.counted = false;
@@ -297,7 +446,7 @@ async function mesaStats(db, user) {
 const progressOf = ({ done, tips }) => ({ ...levelFor(done), tips });
 export const mesaProgress = async (db, user) => progressOf(await mesaStats(db, user));
 // Sin revisión automática, decidir "me salió bien" vale poco: la propina premia lo evaluado.
-const tipOf = (attempt) => (!attempt ? 0 : attempt.selfCheck ? 2 : attempt.stars);
+const tipOf = (attempt) => (!attempt ? 0 : attempt.selfCheck ? 1 : attempt.stars) * TIP_PER_STAR;
 
 export function mesaTip(steps, attempts) {
   const earned = steps.reduce((n, _, i) => n + tipOf(attempts[i]), 0);
@@ -319,7 +468,10 @@ export function assignHelp(steps, level, done, rng = Math.random) {
 
 function publicMesa(mesa) {
   const { steps, ...rest } = mesa;
-  return { ...rest, steps: steps.map(({ keep, linked, ...s }) => ({ ...s, say: { ...s.say, pron: pronounce(s.say.en), goal: goalFor(s.say) } })) };
+  return { ...rest, steps: steps.map(({ keep, linked, ...s }) => {
+    const { alts, ...say } = s.say;
+    return { ...s, say: { ...say, pron: pronounce(s.say.en), goal: goalFor(s.say) } };
+  }) };
 }
 
 export async function generateMesa(db, user, now, rng = Math.random) {
@@ -352,7 +504,8 @@ export async function mesaTurn(db, user, mesaId, { index, heard, selfCheck, asse
   if (!mesa || mesa.id !== mesaId || mesa.finished) return { error: 'not_found', message: 'Esa mesa ya terminó. Genera otra.' };
   const step = mesa.steps[index];
   if (!step) return { error: 'not_found', message: 'Ese turno no existe.' };
-  const result = assessment ? assessedResult(step.say.en, assessment)
+  const result = isOpenTurn(step) && !selfCheck ? openTurnResult(step, { heard, assessment })
+    : assessment ? assessedResult(step.say.en, assessment)
     : selfCheck
       ? { words: step.say.en.split(/\s+/).map((w) => ({ w, ok: true })), ratio: null, stars: 0, understood: true, tip: null, selfCheck: true }
       : compareSpeech(step.say.en, heard);
@@ -398,10 +551,10 @@ const RECENT_LINES = 150;
 const RECENT_REPLIES = 25;
 
 export function answerFits(heard, need) {
-  const said = speechTokens(heard);
+  const said = sense(heard);
   return need.every((group) => group.some((word) => {
-    const [wanted] = speechTokens(word);
-    return said.some((w) => w === wanted || typoKind(w, wanted) === 'safe');
+    const [wanted] = sense(word);
+    return wanted === undefined ? false : said.some((w) => w === wanted || typoKind(w, wanted) === 'safe');
   }));
 }
 
@@ -415,7 +568,7 @@ export function replyResult(current, { heard, selfCheck, assessment }) {
   // Sin frase de referencia, Azure es más severo con palabras átonas: solo se marca lo claramente flojo.
   const words = (assessment.words ?? []).filter((w) => w.error !== 'Insertion').map((w) => ({ w: w.word, ok: w.accuracy >= 40, accuracy: Math.round(w.accuracy) }));
   const score = assessment.score ?? 0;
-  const stars = starsFromScore(score);
+  const stars = fairStars(score, words);
   const weakest = words.filter((x) => !x.ok).sort((a, b) => a.accuracy - b.accuracy)[0];
   return { ...base, words, ratio: score / 100, stars, understood: score >= 60, tip: weakest ? { word: weakest.w, text: tipFor(weakest.w) } : null, assessed: true, score: Math.round(score), answered, heard: text };
 }
@@ -425,17 +578,27 @@ export async function improveHome(db, user, now) {
   return { attempts: improve.attempts, goal: GOALS.improve, done: improve.attempts >= GOALS.improve };
 }
 
+/** Una línea de cliente de cualquier situación de Mesas: corta, y sin depender de lo anterior. */
+function guestLine(rng) {
+  const lines = buildMesa(rng, { done: 20 }).steps.map((s) => s.guest).filter((g) => tokens(g.en).length >= 3 && tokens(g.en).length <= 12);
+  if (!lines.length) return null;
+  const { en, es } = lines[Math.floor(rng() * lines.length)];
+  return { en, es, who: 'cliente' };
+}
+
 function pickLine(practice, rng) {
   const { improve, tables } = practice;
   const recent = new Set(improve.recent);
   // De vez en cuando vuelve lo que costó en una mesa.
   const weak = tables.weak.filter((x) => !recent.has(x.en));
   if (weak.length && rng() < 0.2) return weak[Math.floor(rng() * weak.length)];
-  for (let i = 0; i < 8; i++) {
-    const line = rng() < 0.4 ? clientLine(rng) : FRASES[Math.floor(rng() * FRASES.length)];
-    if (!recent.has(line.en)) return line;
+  // Al mesero le sirve sobre todo entender a sus clientes, y de vez en cuando oír sus propias frases.
+  for (let i = 0; i < 10; i++) {
+    const roll = rng();
+    const line = roll < 0.6 ? guestLine(rng) : roll < 0.8 ? { ...clientLine(rng), who: 'cliente' } : { ...FRASES[Math.floor(rng() * FRASES.length)], who: 'mesero' };
+    if (line && !recent.has(line.en)) return line;
   }
-  return FRASES[Math.floor(rng() * FRASES.length)];
+  return { ...FRASES[Math.floor(rng() * FRASES.length)], who: 'mesero' };
 }
 
 export async function generateImprove(db, user, mode, now, rng = Math.random) {
@@ -447,10 +610,10 @@ export async function generateImprove(db, user, mode, now, rng = Math.random) {
   const persona = { azure, voice, accent, mood: 'friendly' };
   let item;
   if (mode === 'escuchar') {
-    const { en, es } = pickLine(session.state.practice, rng);
+    const { en, es, who = 'mesero' } = pickLine(session.state.practice, rng);
     improve.current = { id, mode, en, es };
     improve.recent = [en, ...improve.recent].slice(0, RECENT_LINES);
-    item = { id, mode, en, es, pron: pronounce(en), persona };
+    item = { id, mode, en, es, who, pron: pronounce(en), persona };
   } else {
     const reply = buildReply(rng, improve.replies);
     improve.current = { id, mode: 'pronunciar', sample: reply.sample, need: reply.need };

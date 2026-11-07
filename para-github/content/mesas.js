@@ -96,290 +96,502 @@ const PARTIES = [
   { size: 2, en: 'two', es: 'dos' }, { size: 3, en: 'three', es: 'tres' }, { size: 4, en: 'four', es: 'cuatro' }, { size: 5, en: 'five', es: 'cinco' }, { size: 6, en: 'six', es: 'seis' },
 ];
 
-// --- Turnos reutilizables: qué dice el cliente, qué debe decir el alumno. ---
+// --- Turnos: qué dice el cliente y qué responde el alumno. ---
+// Una respuesta es una intención con varias formas reales de decirla: se muestra una al azar y se aceptan todas.
 const step = (kind, guest, say, keep = [], extra = {}) => ({ kind, guest, say, keep, ...extra });
+const R = (goal, ...variants) => (rng) => {
+  const [en, es] = pick(rng, variants);
+  return { en, es, goal, alts: variants.map(([text]) => text) };
+};
 // Un turno LINKED continúa el anterior: ningún imprevisto se mete entre los dos.
 const LINKED = { linked: true };
-const BACK = L("Of course. I'll be right back.", 'Claro. Ya regreso.');
-const KITCHEN = L('Let me check with the kitchen.', 'Déjeme consultar con la cocina.');
-const recommend = (dish) => L(`I recommend the ${dish.en}.`, `Le recomiendo ${dish.es}.`);
+const G = (rng, ...lines) => pick(rng, lines.map(([en, es]) => L(en, es)));
+
+const SAY = {
+  welcomeFollow: R('Dales la bienvenida y llévalos a su mesa.',
+    ['Welcome in! Right this way, please.', '¡Bienvenidos! Por aquí, por favor.'], ['Hi, welcome! Please follow me.', '¡Hola, bienvenidos! Síganme, por favor.'],
+    ['Good evening! Come with me, please.', '¡Buenas noches! Vengan conmigo, por favor.'], ['Welcome! Your table is right over here.', '¡Bienvenidos! Su mesa está aquí mismo.'],
+    ['Hi there! Follow me, please.', '¡Hola! Síganme, por favor.'], ['Of course! Welcome in. Right this way.', '¡Claro! Bienvenidos. Por aquí.']),
+  insideOutside: R('Salúdalos y pregunta si prefieren adentro o afuera.',
+    ['Welcome! Inside or outside tonight?', '¡Bienvenidos! ¿Adentro o afuera esta noche?'], ['Hi! Would you like to sit inside or outside?', '¡Hola! ¿Quieren sentarse adentro o afuera?'],
+    ['Good evening! Do you prefer inside or outside?', '¡Buenas noches! ¿Prefieren adentro o afuera?'], ['Sure! Would you like inside or outside?', '¡Claro! ¿Quieren adentro o afuera?']),
+  howMany: R('Salúdalos y pregunta cuántas personas son.',
+    ['Welcome in! How many people tonight?', '¡Bienvenidos! ¿Cuántas personas esta noche?'], ['Hi there! How many in your party?', '¡Hola! ¿Cuántos son en su grupo?'],
+    ['Good evening! Table for how many?', '¡Buenas noches! ¿Mesa para cuántos?'], ['Hi! How many are you tonight?', '¡Hola! ¿Cuántos son esta noche?']),
+  follow: R('Diles que muy bien y que te sigan.',
+    ['Perfect. Right this way.', 'Perfecto. Por aquí.'], ['Great. Please follow me.', 'Muy bien. Síganme, por favor.'], ['Sounds good. Come with me.', 'Muy bien. Vengan conmigo.'], ['No problem. Follow me, please.', 'No hay problema. Síganme, por favor.']),
+  menus: R('Entrega el menú y dile que el mesero viene pronto.',
+    ['Here are your menus. Your server will be right with you.', 'Aquí tienen sus menús. Su mesero viene enseguida.'], ['Here is the menu. Someone will be right with you.', 'Aquí está el menú. Alguien viene enseguida.'],
+    ['Enjoy your night. Your server is coming right over.', 'Disfruten su noche. Su mesero ya viene.']),
+  intro: R('Salúdalos, preséntate como su mesero y pregunta cómo están.',
+    ["Hi! I'm your server tonight. How are you doing?", '¡Hola! Yo los atiendo esta noche. ¿Cómo están?'], ["Good evening! I'll be taking care of you. How are you?", '¡Buenas noches! Yo los voy a atender. ¿Cómo están?'],
+    ['Hello! I will be your server. How is your night going?', '¡Hola! Yo seré su mesero. ¿Cómo va su noche?'], ['Hi, welcome in! I am your server. How are you tonight?', '¡Hola, bienvenidos! Soy su mesero. ¿Cómo están esta noche?'],
+    ['Hi there! Sorry for the wait. How are you today?', '¡Hola! Perdón por la espera. ¿Cómo están hoy?']),
+  startDrink: R('Di que te alegra y ofrece algo de tomar.',
+    ['Glad to hear it. Can I get you something to drink?', 'Qué bueno. ¿Les traigo algo de tomar?'], ['Great! What can I get you to drink?', '¡Qué bien! ¿Qué les traigo de tomar?'],
+    ['Nice! Can I start you with some drinks?', '¡Qué bien! ¿Empezamos con unas bebidas?'], ["I'm glad. Would you like something to drink?", 'Me alegra. ¿Quieren algo de tomar?']),
+  drinkComing: R('Di que sí y que ya traes la bebida.',
+    ["Sure, I'll be right back with that.", 'Claro, ya regreso con eso.'], ["Perfect. I'll bring that right out.", 'Perfecto. Se lo traigo enseguida.'],
+    ['Of course. Coming right up.', 'Claro. Ya se lo traigo.'], ['You got it. I will be right back.', 'Con gusto. Ya regreso.']),
+  takeTime: R('Diles que se tomen su tiempo.',
+    ['No problem. Take your time.', 'No hay problema. Tómense su tiempo.'], ['Take all the time you need.', 'Tómense todo el tiempo que necesiten.'],
+    ["Of course. I'll come back in a few minutes.", 'Claro. Regreso en unos minutos.'], ['Sure, no rush at all.', 'Claro, sin ninguna prisa.']),
+  whatToDrink: R('Di que claro y pregunta qué quieren tomar.',
+    ['Of course. What would you like?', 'Claro. ¿Qué les gustaría?'], ['Sure! What can I get you?', '¡Claro! ¿Qué les traigo?'], ['Absolutely. What are you having?', 'Con gusto. ¿Qué van a tomar?']),
+  askId: R('Pide su identificación con amabilidad.',
+    ['Of course. Can I see your ID, please?', 'Claro. ¿Me muestra su identificación, por favor?'], ['Great choice. I just need to see your ID.', 'Buena elección. Solo necesito ver su identificación.'],
+    ['Sure. May I see your ID first?', 'Claro. ¿Puedo ver primero su identificación?']),
+  thanksBack: R('Agradece y dile que ya regresas.',
+    ["Thank you. I'll be right back.", 'Gracias. Ya regreso.'], ['Perfect, thanks. I will be right back.', 'Perfecto, gracias. Ya regreso.'], ['Thanks so much. Back in a minute.', 'Muchas gracias. Regreso en un minuto.']),
+  back: R('Di que claro y que ya regresas.',
+    ["Of course. I'll be right back.", 'Claro. Ya regreso.'], ['Sure, no problem. One moment.', 'Claro, no hay problema. Un momento.'], ["Absolutely. I'll get that for you.", 'Con gusto. Se lo traigo.'], ['Of course. Coming right up.', 'Claro. Ya se lo traigo.']),
+  whatOrder: R('Di que muy bien y pregunta qué van a pedir.',
+    ['Great! What can I get for you?', '¡Muy bien! ¿Qué les traigo?'], ['Perfect. What would you like?', 'Perfecto. ¿Qué les gustaría?'], ['Sure! What are you having tonight?', '¡Claro! ¿Qué van a comer esta noche?'], ['Of course. What can I get you?', 'Claro. ¿Qué les traigo?']),
+  howCooked: R('Felicítalo por su elección y pregunta cómo quiere la carne.',
+    ['Great choice! How would you like it cooked?', '¡Excelente elección! ¿Cómo le gustaría la carne?'], ['Good choice. How do you want it cooked?', 'Buena elección. ¿Cómo la quiere?'], ['Sure. How would you like that cooked?', 'Claro. ¿Cómo la quiere cocida?']),
+  anythingElse: R('Felicítalo por su elección y pregunta si quiere algo más.',
+    ['Great choice! Anything else?', '¡Excelente elección! ¿Algo más?'], ['Perfect. Can I get you anything else?', 'Perfecto. ¿Les traigo algo más?'], ['Good choice. Would you like anything else?', 'Buena elección. ¿Quieren algo más?'], ['Sounds good. Anything else for you?', 'Muy bien. ¿Algo más para usted?']),
+  putIn: R('Agradece y dile que pasas el pedido a la cocina.',
+    ["Thank you. I'll put that in for you.", 'Gracias. Le paso el pedido a la cocina.'], ['Perfect. Your food is coming soon.', 'Perfecto. Su comida viene pronto.'], ["Thanks. I'll get that started for you.", 'Gracias. Ya se lo preparan.']),
+  kitchen: R('Dile que vas a consultar con la cocina.',
+    ['Let me check with the kitchen.', 'Déjeme consultar con la cocina.'], ['Good question. Let me ask the kitchen.', 'Buena pregunta. Déjeme preguntar en la cocina.'], ['One moment. I will check with the kitchen.', 'Un momento. Voy a consultar con la cocina.']),
+  thanksForTelling: R('Agradece que te lo haya dicho.',
+    ['Thank you for telling me.', 'Gracias por decírmelo.'], ['Thanks for letting me know.', 'Gracias por avisarme.'], ['Good to know. Thank you for telling me.', 'Es bueno saberlo. Gracias por decírmelo.']),
+  chef: R('Di que no quieres adivinar y que preguntarás al chef.',
+    ["I don't want to guess. I will ask the chef.", 'No quiero adivinar. Le voy a preguntar al chef.'], ['I am not sure. Let me ask the chef first.', 'No estoy seguro. Déjeme preguntarle primero al chef.'], ['I want to be sure. I will talk to the chef.', 'Quiero estar seguro. Voy a hablar con el chef.']),
+  howIsIt: R('Pregunta cómo va todo.',
+    ['How is everything?', '¿Cómo va todo?'], ['How is everything tasting?', '¿Cómo está todo?'], ['Is everything good so far?', '¿Todo bien hasta ahora?'], ['How is your food tonight?', '¿Cómo está su comida esta noche?']),
+  glad: R('Di que te alegra y que ya regresas.',
+    ["I'm so glad. I'll be right back.", 'Qué bueno. Ya regreso.'], ['Glad to hear it. I will be right back.', 'Me alegra oír eso. Ya regreso.'], ["That's great. I'll get that for you.", 'Qué bien. Se lo traigo.']),
+  clearPlates: R('Pregunta si puedes llevarte los platos.',
+    ['May I take your plates?', '¿Puedo llevarme sus platos?'], ['Can I take those out of your way?', '¿Les quito eso de en medio?'], ['Are you all done with these?', '¿Ya terminaron con estos?']),
+  dessert: R('Ofrece postre.',
+    ['Would you like dessert?', '¿Quieren postre?'], ['Did you save room for dessert?', '¿Les quedó espacio para el postre?'], ['Can I get you some dessert?', '¿Les traigo postre?'], ['Do you have room for something sweet?', '¿Les queda espacio para algo dulce?']),
+  dessertList: R('Dile los postres que tienen.',
+    ['We have key lime pie and cheesecake.', 'Tenemos pie de limón y pastel de queso.'], ['Tonight we have cheesecake and key lime pie.', 'Esta noche tenemos pastel de queso y pie de limón.']),
+  spoons: R('Felicítalos por su elección y ofrece más cucharas.',
+    ['Great choice! Would you like more spoons?', '¡Excelente elección! ¿Quieren más cucharas?'], ['Good choice. Do you need two spoons?', 'Buena elección. ¿Necesitan dos cucharas?']),
+  milkSugar: R('Pregunta si quiere leche o azúcar.',
+    ['Would you like milk or sugar?', '¿Quiere leche o azúcar?'], ['Sure. Milk or sugar with that?', 'Claro. ¿Leche o azúcar?'], ['Of course. Do you take milk or sugar?', 'Claro. ¿Lo toma con leche o azúcar?']),
+  hereCheck: R('Di que claro y entrega la cuenta.',
+    ['Of course. Here is your check.', 'Claro. Aquí está su cuenta.'], ['Sure. Here you go. No rush.', 'Claro. Aquí tiene. Sin prisa.'], ['Absolutely. I have your check right here.', 'Con gusto. Aquí tengo su cuenta.']),
+  split: R('Di que sí y pregunta si van juntos o separados.',
+    ['Sure. Together or separate?', 'Claro. ¿Juntos o separados?'], ['No problem. How would you like to split it?', 'No hay problema. ¿Cómo la quieren dividir?'], ['Of course. One check or two?', 'Claro. ¿Una cuenta o dos?']),
+  tipCheck: R('Dile que vas a confirmar lo de la propina.',
+    ['Let me check about the tip.', 'Déjeme consultar lo de la propina.'], ['Good question. Let me check that for you.', 'Buena pregunta. Déjeme revisarlo.']),
+  takeCard: R('Agradece y dile que regresas con su tarjeta.',
+    ["Thank you. I'll be right back with your card.", 'Gracias. Regreso enseguida con su tarjeta.'], ["Perfect. I'll bring your card right back.", 'Perfecto. Ya le traigo su tarjeta.'], ['Thanks. One moment with your card.', 'Gracias. Un momento con su tarjeta.']),
+  receipt: R('Entrega el recibo y pide que firme.',
+    ['Here is your receipt. Please sign here.', 'Aquí está su recibo. Firme aquí, por favor.'], ['Here you go. I just need your signature.', 'Aquí tiene. Solo necesito su firma.'], ['This is your receipt. Please sign right here.', 'Este es su recibo. Firme aquí, por favor.']),
+  goodbye: R('Agradece la visita y despídete.',
+    ['Thank you for coming. Have a great night!', 'Gracias por venir. ¡Que tengan linda noche!'], ['Thanks for coming in. See you soon!', 'Gracias por venir. ¡Nos vemos pronto!'], ['It was a pleasure. Have a good night!', 'Fue un placer. ¡Que pasen buena noche!'], ['Thank you so much. Come back soon!', 'Muchas gracias. ¡Vuelvan pronto!']),
+  full: R('Dile con amabilidad que ahora están llenos.',
+    ['We are full right now.', 'Estamos llenos ahora mismo.'], ['Sorry, all our tables are full right now.', 'Perdón, todas las mesas están llenas ahora.'], ['We are very busy right now, sorry.', 'Estamos muy llenos ahora, perdón.']),
+  waitTime: R('Dile que son unos quince minutos de espera.',
+    ['It is about a fifteen minute wait.', 'Son unos quince minutos de espera.'], ['About fifteen minutes.', 'Unos quince minutos.'], ['It should be around fifteen minutes.', 'Deberían ser unos quince minutos.']),
+  getName: R('Agradece y pide su nombre.',
+    ['Thank you. Can I get your name?', 'Gracias. ¿Me da su nombre?'], ['Great. What name should I put?', 'Muy bien. ¿A qué nombre lo pongo?'], ['Perfect. Can I get a name for the list?', 'Perfecto. ¿Me da un nombre para la lista?']),
+  waitBar: R('Dile que pueden esperar en la barra.',
+    ['You can wait at the bar.', 'Pueden esperar en la barra.'], ['You are welcome to wait at the bar.', 'Pueden esperar en la barra con gusto.'], ['The bar is a great place to wait.', 'La barra es un buen lugar para esperar.']),
+  tableReady: R('Dile que su mesa está lista y agradece la espera.',
+    ['Yes. Thanks for waiting.', 'Sí. Gracias por esperar.'], ['Yes, your table is ready now.', 'Sí, su mesa ya está lista.'], ['Good timing. Your table is ready.', 'Justo a tiempo. Su mesa está lista.']),
+  underName: R('Dales la bienvenida y pregunta a nombre de quién.',
+    ['Welcome in! Under what name?', '¡Bienvenidos! ¿A nombre de quién?'], ['Great! What name is it under?', '¡Muy bien! ¿A qué nombre está?'], ['Welcome! Can I get the name, please?', '¡Bienvenidos! ¿Me da el nombre, por favor?']),
+  foundIt: R('Dile que encontraste la reservación y pregunta cuántos son.',
+    ['I found it, thank you. How many people?', 'La encontré, gracias. ¿Cuántas personas?'], ['Here it is. How many are you tonight?', 'Aquí está. ¿Cuántos son esta noche?'], ['Perfect, I see it. Table for how many?', 'Perfecto, ya la veo. ¿Mesa para cuántos?']),
+  toGoElse: R('Di que claro y pregunta si quiere algo más.',
+    ['Of course. Anything else?', 'Claro. ¿Algo más?'], ['Sure! Can I get you anything else?', '¡Claro! ¿Le traigo algo más?'], ['Sounds good. Anything to drink with that?', 'Muy bien. ¿Algo de tomar con eso?']),
+  tenMinutes: R('Dile que estará listo en diez minutos.',
+    ['It will be ready in ten minutes.', 'Estará listo en diez minutos.'], ['Give us about ten minutes.', 'Denos unos diez minutos.'], ['It should take around ten minutes.', 'Debe tardar unos diez minutos.']),
+  whatName: R('Agradece y pregunta su nombre.',
+    ['Thank you. What is your name?', 'Gracias. ¿Cuál es su nombre?'], ['Great. Can I get a name for the order?', 'Muy bien. ¿Me da un nombre para el pedido?'], ['Perfect. What name is it for?', 'Perfecto. ¿A qué nombre?']),
+  bag: R('Pregunta si quiere una bolsa.',
+    ['Would you like a bag?', '¿Quiere una bolsa?'], ['Do you need a bag for that?', '¿Necesita una bolsa para eso?']),
+  orderReady: R('Entrega el pedido y agradece la visita.',
+    ['Here is your order. Thank you for coming.', 'Aquí está su pedido. Gracias por venir.'], ['Here you go. Enjoy your food!', 'Aquí tiene. ¡Buen provecho!'], ['All ready. Thanks, and have a good night!', 'Todo listo. ¡Gracias, y buena noche!']),
+  welcomeBack: R('Alégrate de verlos otra vez y llévalos a su mesa.',
+    ['Welcome back! So good to see you again.', '¡Bienvenidos otra vez! Qué gusto verlos de nuevo.'], ['Hi again! Nice to see you. Right this way.', '¡Hola otra vez! Qué gusto verlos. Por aquí.'], ['Welcome back! Your table is right over here.', '¡Bienvenidos otra vez! Su mesa está aquí mismo.']),
+  sameAgain: R('Pregunta si quieren lo mismo de siempre.',
+    ['Would you like the same as last time?', '¿Quieren lo mismo de la última vez?'], ['The usual for you tonight?', '¿Lo de siempre esta noche?'], ['Are you having the same as last time?', '¿Van a pedir lo mismo de la última vez?']),
+  box: R('Di que claro y que traes una caja.',
+    ["Of course. I'll bring you a box.", 'Claro. Le traigo una caja.'], ['Sure, let me get you a box.', 'Claro, déjeme traerle una caja.'], ['No problem. I will box that for you.', 'No hay problema. Se lo pongo en una caja.']),
+  firstTime: R('Pregunta si es su primera vez aquí.',
+    ['Welcome! Is this your first time with us?', '¡Bienvenidos! ¿Es su primera vez con nosotros?'], ['Hi! Have you been here before?', '¡Hola! ¿Ya habían venido antes?'], ['Good evening! Is this your first time here?', '¡Buenas noches! ¿Es su primera vez aquí?']),
+  firstWelcome: R('Dales la bienvenida y explícales que estás para ayudar.',
+    ["How nice! I'm happy to help you with the menu.", '¡Qué bien! Con gusto les ayudo con el menú.'], ['Great, welcome! Let me know if you have any questions.', '¡Qué bien, bienvenidos! Avísenme si tienen preguntas.'], ['Welcome! Tell me if I can help you with anything.', '¡Bienvenidos! Díganme si les ayudo en algo.']),
+  safeShare: R('Di que claro y que traes un plato extra.',
+    ['Of course. I will bring an extra plate.', 'Claro. Les traigo un plato extra.'], ['Sure! Let me get you two plates.', '¡Claro! Déjeme traerles dos platos.'], ['No problem. I can bring an extra plate.', 'No hay problema. Puedo traer un plato extra.']),
+  sorry: R('Discúlpate por lo que pasó.',
+    ["I'm so sorry about that.", 'Lo siento mucho.'], ['I am very sorry about that.', 'Lo siento mucho por eso.'], ['Oh no, I apologize for that.', 'Ay no, le pido disculpas.']),
+  fix: R('Ofrece arreglarlo.',
+    ['Let me fix that for you.', 'Déjeme arreglarlo.'], ['I will fix that right away.', 'Lo arreglo enseguida.'], ['I will take care of that for you.', 'Yo me encargo de eso.']),
+  manager: R('Dile que hablarás con tu gerente.',
+    ['I will talk to my manager.', 'Voy a hablar con mi gerente.'], ['Let me get my manager for you.', 'Déjeme llamar a mi gerente.'], ['Let me ask my manager about that.', 'Déjeme preguntarle a mi gerente.']),
+  patience: R('Agradece su paciencia.',
+    ['Thank you for your patience.', 'Gracias por su paciencia.'], ['Thanks for being so patient.', 'Gracias por tener tanta paciencia.'], ['I appreciate your patience. Thank you.', 'Agradezco su paciencia. Gracias.']),
+  sorryWait: R('Discúlpate por la espera.',
+    ['Sorry for the wait.', 'Perdón por la espera.'], ['I am so sorry about the wait.', 'Lamento mucho la espera.'], ['I apologize for the wait.', 'Le pido disculpas por la espera.']),
+  tellKitchen: R('Dile que avisarás a la cocina enseguida.',
+    ['I will tell the kitchen right away.', 'Le aviso a la cocina enseguida.'], ['Let me talk to the kitchen right now.', 'Déjeme hablar con la cocina ahora mismo.']),
+  noProblem: R('Dile que no hay problema.',
+    ['No problem. It is okay.', 'No hay problema. Está bien.'], ['No worries at all.', 'No se preocupe.'], ["That's okay, no problem.", 'Está bien, no hay problema.']),
+  pleasure: R('Dile que fue un placer.',
+    ['It was a pleasure.', 'Fue un placer.'], ['You are very welcome.', 'Con mucho gusto.'], ['My pleasure. Enjoy your night.', 'Con gusto. Disfruten su noche.']),
+  checkOneMoment: R('Dile que vas a revisar y pide un momento.',
+    ['Let me check. One moment, please.', 'Déjeme ver. Un momento, por favor.'], ['One moment. Let me see what I can do.', 'Un momento. Déjeme ver qué puedo hacer.'], ['Let me look for you. One moment.', 'Déjeme revisar. Un momento.']),
+  newDrinks: R('Di que claro y que les llevas sus bebidas.',
+    ['Of course. I will bring your drinks.', 'Claro. Les traigo sus bebidas.'], ['Sure, I will bring those over for you.', 'Claro, yo se las llevo.']),
+  otherTable: R('Discúlpate y ofrece otra mesa.',
+    ["I'm sorry. Would you like another table?", 'Lo siento. ¿Quieren otra mesa?'], ['So sorry. Can I move you to another table?', 'Lo siento mucho. ¿Los cambio a otra mesa?']),
+  clean: R('Discúlpate y ofrece limpiar.',
+    ["I'm so sorry. Let me clean that up.", 'Lo siento mucho. Déjeme limpiar eso.'], ['Oh, I am sorry. I will clean that right now.', 'Ay, perdón. Lo limpio ahora mismo.']),
+  napkins: R('Dile que le traerás servilletas.',
+    ['I will bring you some napkins.', 'Le traigo unas servilletas.'], ['Let me get you some napkins.', 'Déjeme traerle unas servilletas.']),
+  soldOut: R('Discúlpate y dile que hoy no tienen ese plato.',
+    ["I'm so sorry. We do not have that tonight.", 'Lo siento mucho. Hoy no tenemos ese plato.'], ['I am sorry. We are out of that tonight.', 'Lo siento. Esta noche se nos acabó.'], ['Sorry, that one is sold out tonight.', 'Perdón, ese ya se agotó esta noche.']),
+  cardFailed: R('Dile con discreción que la tarjeta no pasó.',
+    ['I am sorry. Your card did not go through.', 'Lo siento. Su tarjeta no pasó.'], ['Sorry, there was a problem with this card.', 'Perdón, hubo un problema con esta tarjeta.']),
+  otherCard: R('Pregunta si tiene otra tarjeta o efectivo.',
+    ['Do you have another card or cash?', '¿Tiene otra tarjeta o efectivo?'], ['Would you like to try another card?', '¿Quiere probar con otra tarjeta?']),
+  checkBill: R('Discúlpate y dile que vas a revisar la cuenta.',
+    ['I am so sorry. Let me check your bill.', 'Lo siento mucho. Déjeme revisar su cuenta.'], ['Oh, sorry about that. I will fix your check.', 'Ay, perdón. Le corrijo la cuenta.']),
+  closingSoon: R('Avísale que la cocina cierra pronto.',
+    ['Just so you know, the kitchen closes soon.', 'Para que sepan, la cocina cierra pronto.'], ['The kitchen closes in ten minutes.', 'La cocina cierra en diez minutos.']),
+  birthday: R('Deséale feliz cumpleaños.',
+    ['Happy birthday! Congratulations!', '¡Feliz cumpleaños! ¡Felicidades!'], ['Happy birthday! That is great!', '¡Feliz cumpleaños! ¡Qué bien!'], ['Oh, happy birthday! Welcome!', '¡Ay, feliz cumpleaños! ¡Bienvenido!']),
+  photo: R('Di que con gusto le tomas la foto.',
+    ['Of course, no problem.', 'Claro, no hay problema.'], ['Sure! Everybody smile.', '¡Claro! Todos a sonreír.'], ['I would love to. Smile!', 'Con mucho gusto. ¡Sonrían!']),
+  rushOk: R('Di que no hay problema y que avisas a la cocina.',
+    ['No problem. I will tell the kitchen.', 'No hay problema. Le aviso a la cocina.'], ['Thanks for telling me. I will let the kitchen know.', 'Gracias por decirme. Le aviso a la cocina.']),
+  children: R('Dales la bienvenida y pregunta si vienen niños.',
+    ['Welcome in! Are there any children?', '¡Bienvenidos! ¿Vienen niños?'], ['Welcome! Are any kids with you tonight?', '¡Bienvenidos! ¿Vienen niños con ustedes?']),
+  highChair: R('Ofrece una silla para bebé.',
+    ['Would you like a high chair?', '¿Quieren una silla para bebé?'], ['Can I bring you a high chair?', '¿Les traigo una silla para bebé?'], ['Do you need a high chair for the baby?', '¿Necesitan una silla para el bebé?']),
+  crayons: R('Entrega los crayones para los niños.',
+    ['Here are some crayons for the kids.', 'Aquí tienen crayones para los niños.'], ['These crayons are for the kids.', 'Estos crayones son para los niños.']),
+  wineOrWhite: R('Di que claro y pregunta si quieren tinto o blanco.',
+    ['Of course. Red or white wine?', 'Claro. ¿Vino tinto o blanco?'], ['Sure. Do you like red or white?', 'Claro. ¿Les gusta tinto o blanco?'], ['Here you go. Are you thinking red or white?', 'Aquí tiene. ¿Piensan en tinto o blanco?']),
+  cheers: R('Brinda y deséales que disfruten.',
+    ['Cheers, enjoy your drinks!', '¡Salud, disfruten sus bebidas!'], ['Here you go. Enjoy!', 'Aquí tienen. ¡Disfruten!'], ['Enjoy your drinks. I will check on you soon.', 'Disfruten sus bebidas. Regreso pronto.']),
+  noMeat: R('Dile que la sopa de tomate no lleva carne.',
+    ['The tomato soup has no meat.', 'La sopa de tomate no tiene carne.'], ['Our tomato soup has no meat in it.', 'Nuestra sopa de tomate no lleva carne.']),
+  congrats: R('Felicítalos y pídeles que te sigan.',
+    ['Congratulations! Please follow me.', '¡Felicidades! Síganme, por favor.'], ['Oh, congratulations! Right this way.', '¡Ay, felicidades! Por aquí.'], ['Congratulations to you both! Come with me.', '¡Felicidades a los dos! Vengan conmigo.']),
+  letMeCheckTables: R('Dales la bienvenida y di que revisarás las mesas.',
+    ['Welcome! Let me check our tables.', '¡Bienvenidos! Déjeme revisar las mesas.'], ['Wow, welcome! Let me see what we have.', '¡Qué bien, bienvenidos! Déjeme ver qué tenemos.']),
+  splitFour: R('Dile que pueden dividir la cuenta hasta en cuatro pagos.',
+    ['Yes, we can split it up to four times.', 'Sí, podemos dividirla hasta en cuatro pagos.'], ['Yes, up to four cards on one check.', 'Sí, hasta cuatro tarjetas por cuenta.']),
+  explainWater: R('Explícale que es agua sin burbujas.',
+    ['It is water with no bubbles.', 'Es agua sin burbujas.'], ['It is just normal water, no bubbles.', 'Es agua normal, sin burbujas.']),
+  explainSide: R('Explícale que es un plato pequeño con su comida.',
+    ['It is a small dish with your meal.', 'Es un plato pequeño con su comida.'], ['It is something small that comes with your food.', 'Es algo pequeño que viene con su comida.']),
+  miamiWelcome: R('Dales la bienvenida y deséales que disfruten Miami.',
+    ['Welcome! Enjoy your time in Miami.', '¡Bienvenidos! Disfruten su tiempo en Miami.'], ['How nice! Welcome to Miami.', '¡Qué bien! Bienvenidos a Miami.'], ['Welcome! I hope you love Miami.', '¡Bienvenidos! Espero que les encante Miami.']),
+  changeOk: R('Di que claro y pregunta qué le gustaría.',
+    ['Of course. What would you like?', 'Claro. ¿Qué le gustaría?'], ['No problem. What can I get you instead?', 'No hay problema. ¿Qué le traigo en su lugar?']),
+};
+
+const fixed = (goal, en, es) => ({ en, es, goal, alts: [en] });
+const recommend = (c, dish) => R(`Recomiéndale ${dish.es}.`,
+  [`I recommend the ${dish.en}.`, `Le recomiendo ${dish.es}.`], [`The ${dish.en} is really good.`, `${cap(dish.es)} está muy bueno.`], [`I really like the ${dish.en}.`, `A mí me gusta mucho ${dish.es}.`], [`Most people love the ${dish.en}.`, `A casi todos les encanta ${dish.es}.`])(c.rng);
+const describe = (dish) => fixed('Explícale cómo es el plato.', dish.how.en, dish.how.es);
 
 function orderLine(c) {
   const side = c.main.side ? [` with ${c.side.en}`, ` con ${c.side.es}`] : ['', ''];
-  return pick(c.rng, [
-    L(`I will have the ${c.main.en}${side[0]}.`, `Quiero ${c.main.es}${side[1]}.`),
-    L(`Can I get the ${c.main.en}${side[0]}?`, `¿Me trae ${c.main.es}${side[1]}?`),
-    L(`I would like the ${c.main.en}${side[0]}, please.`, `Quisiera ${c.main.es}${side[1]}, por favor.`),
-  ]);
+  return G(c.rng,
+    [`I will have the ${c.main.en}${side[0]}.`, `Quiero ${c.main.es}${side[1]}.`],
+    [`Can I get the ${c.main.en}${side[0]}?`, `¿Me trae ${c.main.es}${side[1]}?`],
+    [`I would like the ${c.main.en}${side[0]}, please.`, `Quisiera ${c.main.es}${side[1]}, por favor.`],
+    [`I think I want the ${c.main.en}${side[0]}.`, `Creo que quiero ${c.main.es}${side[1]}.`],
+    [`Let me try the ${c.main.en}${side[0]}.`, `Déjeme probar ${c.main.es}${side[1]}.`]);
 }
 function confirmSay(c) {
-  const en = `Let me confirm. One ${c.main.en}${c.main.temp ? `, ${c.temp.en}` : ''}${c.main.side ? `, with ${c.side.en}` : ''}.`;
-  const es = `Déjeme confirmar. ${cap(c.main.es)}${c.main.temp ? `, ${c.temp.es}` : ''}${c.main.side ? `, con ${c.side.es}` : ''}.`;
-  return L(en, es);
+  const en = `${c.main.en}${c.main.temp ? `, ${c.temp.en}` : ''}${c.main.side ? `, with ${c.side.en}` : ''}`;
+  const es = `${c.main.es}${c.main.temp ? `, ${c.temp.es}` : ''}${c.main.side ? `, con ${c.side.es}` : ''}`;
+  return R(`Confirma el pedido: ${es}.`,
+    [`Let me confirm. One ${en}.`, `Déjeme confirmar. ${cap(es)}.`], [`Okay, so one ${en}.`, `Bien, entonces ${es}.`], [`Perfect. That is one ${en}.`, `Perfecto. Es ${es}.`])(c.rng);
 }
+const ALL_SET = (c) => G(c.rng, ['No, that is all for now.', 'No, eso es todo por ahora.'], ['That is everything, thank you.', 'Eso es todo, gracias.'], ['I think we are good.', 'Creo que estamos bien.'], ['Nope, that is it.', 'No, eso es todo.'], ['No, thanks. I am good.', 'No, gracias. Estoy bien.']);
 
 const T = {
-  greet: (c) => step('greet',
-    pick(c.rng, [
-      L(`Hi, a table for ${c.party.en}, please.`, `Hola, una mesa para ${c.party.es}, por favor.`),
-      L(`Hello, do you have a table for ${c.party.en}?`, `Hola, ¿tiene una mesa para ${c.party.es}?`),
-      L(`Good evening. We are ${c.party.en} people.`, `Buenas noches. Somos ${c.party.es} personas.`),
-    ]),
-    pick(c.rng, [L('Welcome in! Right this way, please.', '¡Bienvenidos! Por aquí, por favor.'), L('Good evening! Please follow me.', '¡Buenas noches! Síganme, por favor.'), L('Welcome! Here is your table.', '¡Bienvenidos! Aquí está su mesa.')]),
-    [c.party.en]),
-  sit: (c) => step('sit',
-    pick(c.rng, [L('Thank you. This table is nice.', 'Gracias. Esta mesa está bonita.'), L('Great, thank you.', 'Genial, gracias.'), L('Oh, nice. Can we see the menu?', 'Qué bien. ¿Podemos ver el menú?')]),
-    pick(c.rng, [L('Here is the menu. I will be your server.', 'Aquí está el menú. Yo los voy a atender.'), L('Here is the menu. Take your time.', 'Aquí está el menú. Tómense su tiempo.')])),
-  askDrink: (c) => step('drink',
-    pick(c.rng, [L('Thanks. Everything looks good.', 'Gracias. Todo se ve bien.'), L('Thank you. We are thirsty!', 'Gracias. ¡Tenemos sed!'), L('Okay, thank you.', 'Bien, gracias.')]),
-    pick(c.rng, [L('Can I get you something to drink?', '¿Les traigo algo de tomar?'), L('What would you like to drink?', '¿Qué quieren tomar?'), L('Would you like something to drink?', '¿Quieren algo de tomar?')])),
-  giveDrink: (c) => step('drink2',
-    pick(c.rng, [L(`${cap(c.drink.en)}, please.`, `${cap(c.drink.es)}, por favor.`), L(`I would like ${c.drink.en}, please.`, `Quisiera ${c.drink.es}, por favor.`), L(`Can I get ${c.drink.en}?`, `¿Me trae ${c.drink.es}?`)]),
-    pick(c.rng, [L('Of course. Are you ready to order?', 'Claro. ¿Están listos para ordenar?'), L('Sure. What would you like to eat?', 'Claro. ¿Qué quieren comer?'), L('Great. Would you like a starter?', 'Muy bien. ¿Quieren una entrada?')]),
-    [c.drink.word]),
-  starter: (c) => step('starter',
-    pick(c.rng, [L(`Can we get the ${c.starter.en} first?`, `¿Nos trae ${c.starter.es} primero?`), L(`We will start with the ${c.starter.en}.`, `Empezamos con ${c.starter.es}.`)]),
-    pick(c.rng, [L('Great choice! Are you ready to order?', '¡Excelente elección! ¿Listos para ordenar?'), L('Perfect. What would you like for dinner?', 'Perfecto. ¿Qué quieren cenar?')]),
-    [c.starter.word]),
-  order: (c) => step('order', orderLine(c),
-    c.main.temp ? pick(c.rng, [L('Great choice! How would you like it cooked?', '¡Excelente elección! ¿Cómo le gustaría la carne?'), L('Sure. How would you like it cooked?', 'Claro. ¿Cómo le gustaría la carne?')])
-      : pick(c.rng, [L('Great choice! Anything else?', '¡Excelente elección! ¿Algo más?'), L('Perfect. Would you like anything else?', 'Perfecto. ¿Quieren algo más?')]),
-    [c.main.word, ...(c.main.side ? [c.side.word] : [])]),
-  temp: (c) => (c.main.temp ? step('temp',
-    pick(c.rng, [L(`${cap(c.temp.en)}, please.`, `${cap(c.temp.es)}, por favor.`), L(`I like it ${c.temp.en}.`, `Me gusta ${c.temp.es}.`)]),
-    pick(c.rng, [L(`${cap(c.temp.en)}, got it. Anything else?`, `${cap(c.temp.es)}, entendido. ¿Algo más?`), L('Thank you. Anything else?', 'Gracias. ¿Algo más?')]),
-    [c.temp.word]) : null),
-  thatsAll: (c) => step('confirm',
-    pick(c.rng, [L('No, that is all for now.', 'No, eso es todo por ahora.'), L('That is everything, thank you.', 'Eso es todo, gracias.'), L('I think we are good.', 'Creo que estamos bien.')]),
-    confirmSay(c)),
-  close: (c) => step('close',
-    pick(c.rng, [L('Yes, that is right. Thank you!', 'Sí, así es. ¡Gracias!'), L('Perfect, thanks.', 'Perfecto, gracias.'), L('Yes. How long will it take?', 'Sí. ¿Cuánto va a tardar?')]),
-    pick(c.rng, [L("Thank you. I'll be right back.", 'Gracias. Ya regreso.'), L('Your food is coming soon.', 'Su comida viene pronto.'), L("Thank you. I'll put that in for you.", 'Gracias. Le paso el pedido a la cocina.')]),
-    [], LINKED),
+  door: (c) => step('greet', G(c.rng,
+    [`Hi, a table for ${c.party.en}, please.`, `Hola, una mesa para ${c.party.es}, por favor.`],
+    [`Hello, do you have a table for ${c.party.en}?`, `Hola, ¿tiene una mesa para ${c.party.es}?`],
+    [`Good evening. We are ${c.party.en} people.`, `Buenas noches. Somos ${c.party.es} personas.`],
+    [`Hi! Just ${c.party.en} of us tonight.`, `¡Hola! Solo ${c.party.es} esta noche.`],
+    [`Hey there. Can we get a table for ${c.party.en}?`, `Hola. ¿Nos da una mesa para ${c.party.es}?`]), SAY.welcomeFollow(c.rng)),
+  seatChoice: (c) => step('greet', G(c.rng,
+    [`Hi, a table for ${c.party.en}, please.`, `Hola, una mesa para ${c.party.es}, por favor.`],
+    [`Good evening. There are ${c.party.en} of us.`, `Buenas noches. Somos ${c.party.es}.`],
+    [`Hi there! Do you have room for ${c.party.en}?`, `¡Hola! ¿Tienen lugar para ${c.party.es}?`],
+    [`Hey, are you open? We are ${c.party.en}.`, `Hola, ¿están abiertos? Somos ${c.party.es}.`]), SAY.insideOutside(c.rng)),
+  whoIsComing: (c) => step('greet', G(c.rng, ['Hi! Can we get a table?', '¡Hola! ¿Nos da una mesa?'], ['Good evening. Do you have any tables?', 'Buenas noches. ¿Tienen mesas?'], ['Hello! Can we eat here tonight?', '¡Hola! ¿Podemos comer aquí esta noche?'], ['Hi there. Is it too late to eat?', 'Hola. ¿Es muy tarde para comer?']), SAY.howMany(c.rng)),
+  intro: (c) => step('greet', G(c.rng, ['Hi! Are you our server?', '¡Hola! ¿Usted es nuestro mesero?'], ['Hello there.', 'Hola.'], ['Hi, how are you?', 'Hola, ¿cómo está?'], ['Excuse me, is someone helping us?', 'Disculpe, ¿alguien nos está atendiendo?'], ['Hey, good evening.', 'Hola, buenas noches.'], ['Oh, hi! We just sat down.', '¡Ah, hola! Acabamos de sentarnos.']), SAY.intro(c.rng)),
+  feel: (c) => step('feel', G(c.rng, ['We are good, thanks.', 'Estamos bien, gracias.'], ['Great, thank you.', 'Muy bien, gracias.'], ['Pretty good, thanks. Long day.', 'Bastante bien, gracias. Día largo.'], ['Doing well, thanks.', 'Bien, gracias.'], ['Very good. We are so hungry!', 'Muy bien. ¡Tenemos mucha hambre!']), SAY.startDrink(c.rng), [], LINKED),
+  drinkOrder: (c) => step('drink2', G(c.rng,
+    [`${cap(c.drink.en)}, please.`, `${cap(c.drink.es)}, por favor.`], [`I would like ${c.drink.en}, please.`, `Quisiera ${c.drink.es}, por favor.`], [`Can I get ${c.drink.en}?`, `¿Me trae ${c.drink.es}?`],
+    [`I will just have ${c.drink.en}.`, `Solo quiero ${c.drink.es}.`], [`Do you have ${c.drink.en}?`, `¿Tienen ${c.drink.es}?`]), SAY.drinkComing(c.rng), [], LINKED),
+  notReady: (c) => step('wait', G(c.rng, ['Thanks. We need a few more minutes for the food.', 'Gracias. Necesitamos unos minutos más para la comida.'], ['We are still looking at the menu.', 'Todavía estamos viendo el menú.'], ['Everything looks good. We can not decide!', 'Todo se ve bien. ¡No nos decidimos!']), SAY.takeTime(c.rng)),
+  ready: (c) => step('ready', G(c.rng, ['I think we are ready.', 'Creo que estamos listos.'], ['Okay, we know what we want.', 'Bien, ya sabemos qué queremos.'], ['Excuse me, we are ready to order.', 'Disculpe, estamos listos para ordenar.'], ['Hi, can we order now?', 'Hola, ¿podemos ordenar ya?'], ['We are starving. Can we order?', 'Tenemos mucha hambre. ¿Podemos ordenar?']), SAY.whatOrder(c.rng)),
+  order: (c) => step('order', orderLine(c), c.main.temp ? SAY.howCooked(c.rng) : SAY.anythingElse(c.rng), [], LINKED),
+  temp: (c) => (c.main.temp ? step('temp', G(c.rng, [`${cap(c.temp.en)}, please.`, `${cap(c.temp.es)}, por favor.`], [`I like it ${c.temp.en}.`, `Me gusta ${c.temp.es}.`], [`Make it ${c.temp.en}, please.`, `Que sea ${c.temp.es}, por favor.`]), SAY.anythingElse(c.rng), [], LINKED) : null),
+  thatsAll: (c) => step('confirm', ALL_SET(c), confirmSay(c), [], LINKED),
+  close: (c) => step('close', G(c.rng, ['Yes, that is right. Thank you!', 'Sí, así es. ¡Gracias!'], ['Perfect, thanks.', 'Perfecto, gracias.'], ['Yes. How long will it take?', 'Sí. ¿Cuánto va a tardar?'], ['That sounds right.', 'Suena bien.']), SAY.putIn(c.rng), [], LINKED),
 };
 const ORDER = [T.order, T.temp];
+const FOLLOW_UP = (c) => step('sit', G(c.rng, ['Outside, please. It is a nice night.', 'Afuera, por favor. Hace buena noche.'], ['Inside, please.', 'Adentro, por favor.'], ['Inside is great, thanks.', 'Adentro está bien, gracias.'], ['Outside, if you have room.', 'Afuera, si tiene lugar.'], ['Anywhere is fine.', 'Donde sea está bien.']), SAY.follow(c.rng), [], LINKED);
+const SEATED = (c) => step('sit2', G(c.rng, ['Thank you. This table is nice.', 'Gracias. Esta mesa está bonita.'], ['Great, thank you.', 'Genial, gracias.'], ['Oh, nice. Can we see the menu?', 'Qué bien. ¿Podemos ver el menú?'], ['Wow, I love this place.', 'Vaya, me encanta este lugar.']), SAY.menus(c.rng), [], LINKED);
 
-// Imprevistos que alargan la mesa. ANYWHERE sirve siempre; AT_TABLE, ya sentados; SERVED, con la comida en la mesa.
-const extra = (guest, say, keep) => () => [step('extra', guest, say, keep)];
+// Imprevistos que le dan vida a la charla. ANYWHERE sirve siempre; AT_TABLE, ya sentados; SERVED, con la comida en la mesa.
+const extra = (guests, sayFn) => (c) => [step('extra', G(c.rng, ...guests), sayFn(c))];
+const restroom = R('Dile dónde está el baño.', ['The restroom is in the back, on the right.', 'El baño está al fondo, a la derecha.'], ['It is in the back, on your right.', 'Está al fondo, a su derecha.'], ['Go to the back and turn right.', 'Vaya al fondo y gire a la derecha.']);
+const yesCards = R('Dile que sí aceptan tarjetas.', ['Yes, we do.', 'Sí, aceptamos.'], ['Yes, we take all cards.', 'Sí, aceptamos todas las tarjetas.'], ['Of course we do.', 'Claro que sí.']);
+const doingWell = R('Responde que estás bien y da las gracias.', ["I'm doing well, thank you.", 'Estoy bien, gracias.'], ['Very well, thanks for asking.', 'Muy bien, gracias por preguntar.'], ['I am great. Thank you!', 'Estoy muy bien. ¡Gracias!']);
+const closesAt = R('Dile a qué hora cierra la cocina.', ['The kitchen closes at ten.', 'La cocina cierra a las diez.'], ['We close at ten tonight.', 'Cerramos a las diez esta noche.']);
+const napkinsHere = R('Di que claro y entrega las servilletas.', ['Sure. Here are some napkins.', 'Claro. Aquí tiene unas servilletas.'], ['Of course. Here you go.', 'Claro. Aquí tiene.']);
+const newFork = R('Discúlpate y ofrece un tenedor nuevo.', ["I'm so sorry. Let me bring you a new fork.", 'Lo siento mucho. Le traigo un tenedor nuevo.'], ['Oh, I am sorry. I will get you a clean one.', 'Ay, perdón. Le traigo uno limpio.']);
+const bread = R('Di que claro y que traes pan.', ['Sure, I will bring you some bread.', 'Claro, les traigo pan.'], ['Of course. Fresh bread coming up.', 'Claro. Ya viene pan fresco.']);
+const noIce = R('Repite que sin hielo.', ['No ice, got it.', 'Sin hielo, entendido.'], ['Okay, no ice. Got it.', 'Bien, sin hielo. Entendido.']);
 const ANYWHERE = [
-  extra(L('Excuse me, where is the restroom?', 'Disculpe, ¿dónde está el baño?'), L('The restroom is in the back, on the right.', 'El baño está al fondo, a la derecha.')),
-  extra(L('Do you take credit cards?', '¿Aceptan tarjetas de crédito?'), L('Yes, we do.', 'Sí, aceptamos.')),
-  extra(L('Is it always this busy here?', '¿Siempre hay tanta gente aquí?'), L('Thank you for your patience.', 'Gracias por su paciencia.')),
-  extra(L('How are you doing tonight?', '¿Cómo está esta noche?'), L("I'm doing well, thank you.", 'Estoy bien, gracias.')),
-  extra(L('It is my first time in Miami!', '¡Es mi primera vez en Miami!'), L('Welcome! Enjoy your time in Miami.', '¡Bienvenidos! Disfruten su tiempo en Miami.')),
-  extra(L('What time do you close?', '¿A qué hora cierran?'), L('The kitchen closes at ten.', 'La cocina cierra a las diez.')),
-  extra(L('Do you have wifi here?', '¿Tienen wifi aquí?'), L('Let me check. One moment, please.', 'Déjeme ver. Un momento, por favor.')),
-  extra(L('Is the music always this loud?', '¿La música siempre está tan alta?'), L("I'm sorry. Let me check.", 'Lo siento. Déjeme ver.')),
+  extra([['Excuse me, where is the restroom?', 'Disculpe, ¿dónde está el baño?'], ['Sorry, where is the bathroom?', 'Perdón, ¿dónde está el baño?']], (c) => restroom(c.rng)),
+  extra([['Do you take credit cards?', '¿Aceptan tarjetas de crédito?'], ['Do you take cards here?', '¿Aceptan tarjetas aquí?']], (c) => yesCards(c.rng)),
+  extra([['Is it always this busy here?', '¿Siempre hay tanta gente aquí?'], ['Wow, it is busy tonight.', 'Vaya, hay mucha gente esta noche.']], (c) => SAY.patience(c.rng)),
+  extra([['How are you doing tonight?', '¿Cómo está esta noche?'], ['And how is your night going?', '¿Y cómo va su noche?']], (c) => doingWell(c.rng)),
+  extra([['It is my first time in Miami!', '¡Es mi primera vez en Miami!'], ['We are here on vacation!', '¡Estamos aquí de vacaciones!']], (c) => SAY.miamiWelcome(c.rng)),
+  extra([['What time do you close?', '¿A qué hora cierran?'], ['How late are you open?', '¿Hasta qué hora abren?']], (c) => closesAt(c.rng)),
+  extra([['Do you have wifi here?', '¿Tienen wifi aquí?'], ['Is there somewhere I can charge my phone?', '¿Dónde puedo cargar mi teléfono?']], (c) => SAY.checkOneMoment(c.rng)),
+  extra([['Is the music always this loud?', '¿La música siempre está tan alta?'], ['It is a little loud in here.', 'Hay un poco de ruido aquí.']], (c) => R("Discúlpate y dile que vas a revisar.", ["I'm sorry. Let me check.", 'Lo siento. Déjeme ver.'], ['Sorry about that. Let me see.', 'Perdón por eso. Déjeme ver.'])(c.rng)),
   // El alumno practica pedir que le repitan: el cliente lo vuelve a decir más fácil.
-  () => [
-    step('repeat', L('Could we possibly get a couple more forks?', '¿Será posible que nos traiga un par de tenedores más?'), L('Sorry, could you repeat that?', 'Perdón, ¿puede repetir?')),
-    step('repeat2', L('Two more forks, please.', 'Dos tenedores más, por favor.'), L('Of course. Two more forks.', 'Claro. Dos tenedores más.'), ['forks']),
+  (c) => [
+    step('repeat', L('Could we possibly get a couple more forks?', '¿Será posible que nos traiga un par de tenedores más?'), R('Pide con amabilidad que te lo repita.', ['Sorry, could you repeat that?', 'Perdón, ¿puede repetir?'], ['Sorry, can you say that again?', 'Perdón, ¿puede decirlo otra vez?'], ['Excuse me, one more time, please?', 'Disculpe, ¿otra vez, por favor?'])(c.rng)),
+    step('repeat2', L('Two more forks, please.', 'Dos tenedores más, por favor.'), R('Repite lo que pidió y dile que sí.', ['Of course. Two more forks.', 'Claro. Dos tenedores más.'], ['Two more forks, no problem.', 'Dos tenedores más, no hay problema.'])(c.rng), [], LINKED),
   ],
 ];
 const AT_TABLE = [
-  extra(L('Can we get some water first?', '¿Nos trae agua primero?'), BACK),
-  extra(L('Can I get some napkins?', '¿Me trae más servilletas?'), L('Sure. Here are some napkins.', 'Claro. Aquí tiene unas servilletas.')),
-  extra(L('Can you take a picture of us?', '¿Nos toma una foto?'), L('Of course, no problem.', 'Claro, no hay problema.')),
-  extra(L('This fork is dirty.', 'Este tenedor está sucio.'), L("I'm so sorry. Let me bring you a new fork.", 'Lo siento mucho. Le traigo un tenedor nuevo.')),
-  extra(L('Can we get some bread?', '¿Nos trae pan?'), L('Sure, I will bring you some bread.', 'Claro, les traigo pan.')),
-  extra(L('Do you have any specials tonight?', '¿Tienen especiales esta noche?'), KITCHEN),
-  extra(L('Is the food very spicy?', '¿La comida es muy picante?'), KITCHEN),
-  extra(L('Sorry, one more thing. No ice, please.', 'Perdón, una cosa más. Sin hielo, por favor.'), L('No ice, got it.', 'Sin hielo, entendido.')),
+  extra([['Can we get some water first?', '¿Nos trae agua primero?'], ['Could we get some water when you get a chance?', '¿Nos trae agua cuando pueda?']], (c) => SAY.back(c.rng)),
+  extra([['Can I get some napkins?', '¿Me trae más servilletas?'], ['Do you have more napkins?', '¿Tiene más servilletas?']], (c) => napkinsHere(c.rng)),
+  extra([['Can you take a picture of us?', '¿Nos toma una foto?'], ['Would you mind taking our photo?', '¿Le molesta tomarnos una foto?']], (c) => SAY.photo(c.rng)),
+  extra([['This fork is dirty.', 'Este tenedor está sucio.'], ['Excuse me, my fork is not clean.', 'Disculpe, mi tenedor no está limpio.']], (c) => newFork(c.rng)),
+  extra([['Can we get some bread?', '¿Nos trae pan?'], ['Is there any bread for the table?', '¿Hay pan para la mesa?']], (c) => bread(c.rng)),
+  extra([['Do you have any specials tonight?', '¿Tienen especiales esta noche?'], ['Is the food very spicy?', '¿La comida es muy picante?']], (c) => SAY.kitchen(c.rng)),
+  extra([['Sorry, one more thing. No ice, please.', 'Perdón, una cosa más. Sin hielo, por favor.'], ['Oh, and no ice in my drink.', 'Ah, y sin hielo en mi bebida.']], (c) => noIce(c.rng)),
 ];
 const SERVED = [
-  extra(L('Can we get some more water?', '¿Nos trae más agua?'), BACK),
-  extra(L('Can I get some ketchup, please?', '¿Me trae salsa de tomate, por favor?'), BACK),
-  extra(L('Can I have a straw?', '¿Me da un pitillo?'), BACK),
-  extra(L('Can we get more lemon?', '¿Nos trae más limón?'), BACK),
+  extra([['Can we get some more water?', '¿Nos trae más agua?'], ['More water when you get a chance, please.', 'Más agua cuando pueda, por favor.']], (c) => SAY.back(c.rng)),
+  extra([['Can I get some ketchup, please?', '¿Me trae salsa de tomate, por favor?'], ['Do you have any hot sauce?', '¿Tiene salsa picante?']], (c) => SAY.back(c.rng)),
+  extra([['Can I have a straw?', '¿Me da un pitillo?'], ['Can we get more lemon?', '¿Nos trae más limón?']], (c) => SAY.back(c.rng)),
 ];
 
-// --- Situaciones. Los turnos con opt() se quitan en mesas cortas. ---
+// --- Situaciones: cada una es un momento concreto de 3 a 6 turnos. Los turnos con opt() se quitan en mesas cortas. ---
 const opt = (fn) => Object.assign((c) => fn(c), { optional: true });
 
 const SCENES = [
-  { id: 'cena', es: 'Cena', level: 1, weight: 4, plan: () => [T.greet, opt(T.sit), T.askDrink, T.giveDrink, opt(T.starter), ...ORDER, T.thatsAll, opt(T.close)] },
-  { id: 'bebidas', es: 'Solo bebidas', level: 1, plan: () => [
-    T.greet,
-    () => step('drink', L('We just want a drink tonight.', 'Solo queremos tomar algo esta noche.'), L('Sure. Would you like wine or beer?', 'Claro. ¿Quieren vino o cerveza?')),
-    (c) => step('order', L(`I would like a ${c.alcohol.en}, please.`, `Quisiera ${c.alcohol.es}, por favor.`), L('Of course. Can I see your ID, please?', 'Claro. ¿Me muestra su identificación, por favor?'), [c.alcohol.word]),
-    opt((c) => step('snack', L('Here you go. Do you have snacks?', 'Aquí tiene. ¿Tienen algo para picar?'), L(`We have ${c.starter.en}.`, `Tenemos ${c.starter.es}.`))),
-    () => step('close', L('Great, thank you.', 'Genial, gracias.'), L('Cheers, enjoy your drinks!', '¡Salud, disfruten sus bebidas!')),
+  { id: 'llegada', es: 'Llegan a la puerta', level: 1, entrance: true, weight: 2, plan: () => [T.seatChoice, FOLLOW_UP, SEATED] },
+  { id: 'recibir', es: 'Clientes sin reserva', level: 1, entrance: true, weight: 2, plan: () => [
+    T.whoIsComing,
+    (c) => step('party', G(c.rng, [`We are ${c.party.en}.`, `Somos ${c.party.es}.`], [`Just ${c.party.en}, please.`, `Solo ${c.party.es}, por favor.`], [`${cap(c.party.en)} people.`, `${cap(c.party.es)} personas.`]), SAY.follow(c.rng), [], LINKED),
+    SEATED,
   ] },
+  { id: 'saludo', es: 'Primer saludo en la mesa', level: 1, weight: 2, plan: () => [T.intro, T.feel, T.drinkOrder, opt(T.notReady)] },
+  { id: 'bebidas', es: 'Solo bebidas', level: 1, plan: () => [
+    (c) => step('drink', G(c.rng, ['We just want a drink tonight.', 'Solo queremos tomar algo esta noche.'], ['Hi, can we just get some drinks?', 'Hola, ¿solo unas bebidas?'], ['Hi! Just here for a drink.', '¡Hola! Solo vinimos a tomar algo.']), SAY.whatToDrink(c.rng)),
+    (c) => step('order', G(c.rng, [`I would like a ${c.alcohol.en}, please.`, `Quisiera ${c.alcohol.es}, por favor.`], [`Can I get a ${c.alcohol.en}?`, `¿Me trae ${c.alcohol.es}?`]), SAY.askId(c.rng), [], LINKED),
+    (c) => step('id', G(c.rng, ['Sure, here you go.', 'Claro, aquí tiene.'], ['Yes, one second. Here it is.', 'Sí, un segundo. Aquí está.']), SAY.thanksBack(c.rng), [], LINKED),
+    opt((c) => step('close', G(c.rng, ['Great, thank you.', 'Genial, gracias.'], ['Thanks a lot.', 'Muchas gracias.']), SAY.cheers(c.rng))),
+  ] },
+  { id: 'orden', es: 'Tomar la orden', level: 1, weight: 3, plan: () => [T.ready, ...ORDER, T.thatsAll, opt(T.close)] },
   { id: 'reserva', es: 'Reservación', level: 1, entrance: true, plan: () => [
-    () => step('greet', L('Good evening. We have a reservation.', 'Buenas noches. Tenemos una reservación.'), L('Welcome in! Under what name?', '¡Bienvenidos! ¿A nombre de quién?'), ['reservation']),
-    (c) => step('name', L(`It is under ${c.guestName}.`, `Está a nombre de ${c.guestName}.`), L('Thank you. How many people?', 'Gracias. ¿Cuántas personas?'), [c.guestName.toLowerCase()]),
-    (c) => step('party', L(`We are ${c.party.en}.`, `Somos ${c.party.es}.`), L('Inside or outside?', '¿Adentro o afuera?'), [c.party.en]),
-    (c) => step('sit', pick(c.rng, [L('Inside, please.', 'Adentro, por favor.'), L('Outside, please. It is a nice night.', 'Afuera, por favor. Hace buena noche.')]), L('Great. Please follow me.', 'Muy bien. Síganme, por favor.')),
-    opt(() => step('close', L('Thank you very much.', 'Muchas gracias.'), L('Your server will be right with you.', 'Su mesero viene enseguida.'))),
+    (c) => step('greet', G(c.rng, ['Good evening. We have a reservation.', 'Buenas noches. Tenemos una reservación.'], ['Hi, I made a reservation for tonight.', 'Hola, hice una reservación para esta noche.'], ['Hello, we have a table booked.', 'Hola, tenemos una mesa reservada.']), SAY.underName(c.rng)),
+    (c) => step('name', G(c.rng, [`It is under ${c.guestName}.`, `Está a nombre de ${c.guestName}.`], [`${c.guestName}, for tonight.`, `${c.guestName}, para esta noche.`]), SAY.foundIt(c.rng), [], LINKED),
+    (c) => step('party', G(c.rng, [`We are ${c.party.en}.`, `Somos ${c.party.es}.`], [`${cap(c.party.en)} of us.`, `Somos ${c.party.es}.`]), SAY.follow(c.rng), [], LINKED),
+    opt((c) => step('close', G(c.rng, ['Thank you very much.', 'Muchas gracias.'], ['Thanks so much.', 'Mil gracias.']), SAY.menus(c.rng), [], LINKED)),
   ] },
   { id: 'espera', es: 'Lista de espera', level: 1, entrance: true, plan: () => [
-    (c) => step('greet', L(`Hi, a table for ${c.party.en}, please.`, `Hola, una mesa para ${c.party.es}, por favor.`), L('We are full right now.', 'Estamos llenos ahora mismo.'), [c.party.en]),
-    () => step('wait', L('Oh, how long is the wait?', 'Ah, ¿cuánto hay que esperar?'), L('It is about a fifteen minute wait.', 'Son unos quince minutos de espera.')),
-    () => step('name', L('Okay, we can wait.', 'Bien, podemos esperar.'), L('Thank you. Can I get your name?', 'Gracias. ¿Me da su nombre?'), [], LINKED),
-    (c) => step('bar', L(`It is ${c.guestName}. Where can we wait?`, `Es ${c.guestName}. ¿Dónde esperamos?`), L('You can wait at the bar.', 'Pueden esperar en la barra.'), [c.guestName.toLowerCase()]),
-    opt(() => step('ready', L('Is our table ready now?', '¿Ya está lista nuestra mesa?'), L('Yes. Thanks for waiting.', 'Sí. Gracias por esperar.'))),
+    (c) => step('greet', G(c.rng, [`Hi, a table for ${c.party.en}, please.`, `Hola, una mesa para ${c.party.es}, por favor.`], [`Hello, do you have room for ${c.party.en}?`, `Hola, ¿tienen lugar para ${c.party.es}?`]), SAY.full(c.rng)),
+    (c) => step('wait', G(c.rng, ['Oh, how long is the wait?', 'Ah, ¿cuánto hay que esperar?'], ['Oh no. How long do we have to wait?', 'Ay no. ¿Cuánto hay que esperar?']), SAY.waitTime(c.rng), [], LINKED),
+    (c) => step('name', G(c.rng, ['Okay, we can wait.', 'Bien, podemos esperar.'], ['That is fine. We will wait.', 'Está bien. Esperamos.']), SAY.getName(c.rng), [], LINKED),
+    opt((c) => step('bar', G(c.rng, [`It is ${c.guestName}. Where can we wait?`, `Es ${c.guestName}. ¿Dónde esperamos?`], [`${c.guestName}. Can we wait inside?`, `${c.guestName}. ¿Podemos esperar adentro?`]), SAY.waitBar(c.rng), [], LINKED)),
   ] },
-  { id: 'revisar', es: 'Revisar la mesa', level: 1, served: true, plan: () => [
-    () => step('check', L('Oh, hi there.', 'Ah, hola.'), L('How is everything?', '¿Cómo va todo?')),
-    (c) => step('ask', pick(c.rng, [L(`The ${c.main.en} is great. Can I get more water?`, `${cap(c.main.es)} está muy bien. ¿Me trae más agua?`), L(`Everything is good. I love the ${c.main.en}.`, `Todo bien. Me encanta ${c.main.es}.`)]), L("I'm so glad. I'll be right back.", 'Qué bueno. Ya regreso.'), [c.main.word]),
-    opt(() => step('more', L('Thanks. Can we get more bread too?', 'Gracias. ¿Nos trae más pan también?'), L('Sure, no problem.', 'Claro, no hay problema.'))),
-    () => step('clear', L('We are all done now.', 'Ya terminamos.'), L('May I take your plates?', '¿Puedo llevarme sus platos?')),
-    () => step('dessert', L('Yes, please. Thank you.', 'Sí, por favor. Gracias.'), L('Would you like dessert?', '¿Quieren postre?')),
+  { id: 'revisar', es: 'Pasar por la mesa', level: 1, served: true, plan: () => [
+    (c) => step('check', G(c.rng, ['Oh, hi there.', 'Ah, hola.'], ['Oh, hi again.', 'Ah, hola otra vez.'], ['There you are.', 'Ahí está.']), SAY.howIsIt(c.rng)),
+    (c) => step('ask', G(c.rng, [`The ${c.main.en} is great. Can I get more water?`, `${cap(c.main.es)} está muy bien. ¿Me trae más agua?`], [`Everything is good. I love the ${c.main.en}.`, `Todo bien. Me encanta ${c.main.es}.`], ['So good. Could we get more bread?', 'Muy bueno. ¿Nos trae más pan?']), SAY.glad(c.rng), [], LINKED),
+    (c) => step('clear', G(c.rng, ['We are all done now.', 'Ya terminamos.'], ['That was so good. We are finished.', 'Estuvo muy bueno. Ya terminamos.']), SAY.clearPlates(c.rng)),
+    opt((c) => step('dessert', G(c.rng, ['Yes, please. Thank you.', 'Sí, por favor. Gracias.'], ['Sure, go ahead.', 'Claro, adelante.']), SAY.dessert(c.rng), [], LINKED)),
   ] },
   { id: 'postre', es: 'Postre y café', level: 1, ending: true, plan: () => [
-    () => step('ask', L('That was great. We are done.', 'Estuvo muy bien. Ya terminamos.'), L('Did you save room for dessert?', '¿Les quedó espacio para el postre?')),
-    () => step('options', L('Maybe. What do you have?', 'Tal vez. ¿Qué tienen?'), L('We have key lime pie and cheesecake.', 'Tenemos pie de limón y pastel de queso.')),
-    (c) => step('pick', L(`We will have the ${c.dessert.en}.`, `Queremos ${c.dessert.es}.`), L('Great choice! Would you like more spoons?', '¡Excelente elección! ¿Quieren más cucharas?'), [c.dessert.word]),
-    () => step('coffee', L('Yes, and one coffee, please.', 'Sí, y un café, por favor.'), L('Would you like milk or sugar?', '¿Quiere leche o azúcar?'), ['coffee']),
-    opt(() => step('close', L('Just milk, thank you.', 'Solo leche, gracias.'), BACK, ['milk'])),
+    (c) => step('ask', G(c.rng, ['That was great. We are done.', 'Estuvo muy bien. Ya terminamos.'], ['Wow, we are so full.', 'Vaya, estamos muy llenos.'], ['Everything was delicious.', 'Todo estuvo delicioso.']), SAY.dessert(c.rng)),
+    (c) => step('options', G(c.rng, ['Maybe. What do you have?', 'Tal vez. ¿Qué tienen?'], ['Hmm. What is good?', 'Mmm. ¿Qué está bueno?']), SAY.dessertList(c.rng), [], LINKED),
+    (c) => step('pick', G(c.rng, [`We will have the ${c.dessert.en}.`, `Queremos ${c.dessert.es}.`], [`Let us share the ${c.dessert.en}.`, `Compartamos ${c.dessert.es}.`]), SAY.spoons(c.rng), [], LINKED),
+    opt((c) => step('coffee', G(c.rng, ['Yes, and one coffee, please.', 'Sí, y un café, por favor.'], ['Yes, thanks. A coffee too, please.', 'Sí, gracias. Un café también, por favor.']), SAY.milkSugar(c.rng), [], LINKED)),
   ] },
   { id: 'cuenta', es: 'La cuenta', level: 1, ending: true, plan: () => [
-    (c) => step('ask', pick(c.rng, [L('Excuse me, can we get the check?', 'Disculpe, ¿nos trae la cuenta?'), L('We are ready to pay.', 'Estamos listos para pagar.')]), L('Of course. Here is your check.', 'Claro. Aquí está su cuenta.')),
-    opt(() => step('split', L('Can we split it?', '¿La podemos dividir?'), L('Sure. Together or separate?', 'Claro. ¿Juntos o separados?'))),
-    opt(() => step('tip', L('Is the tip included?', '¿La propina está incluida?'), L('Let me check about the tip.', 'Déjeme consultar lo de la propina.'))),
-    () => step('pay', L('I will pay with my card.', 'Voy a pagar con tarjeta.'), L("Thank you. I'll be right back with your card.", 'Gracias. Regreso enseguida con su tarjeta.'), ['card']),
-    () => step('sign', L('Okay, thank you.', 'Bien, gracias.'), L('Here is your receipt. Please sign here.', 'Aquí está su recibo. Firme aquí, por favor.')),
-    (c) => step('bye', pick(c.rng, [L('Thank you. It was delicious.', 'Gracias. Estuvo delicioso.'), L('Thanks for everything.', 'Gracias por todo.')]), L('Thank you for coming. Have a great night!', 'Gracias por venir. ¡Que tengan linda noche!')),
+    (c) => step('ask', G(c.rng, ['Excuse me, can we get the check?', 'Disculpe, ¿nos trae la cuenta?'], ['We are ready to pay.', 'Estamos listos para pagar.'], ['Could we get the check when you get a chance?', '¿Nos trae la cuenta cuando pueda?']), SAY.hereCheck(c.rng)),
+    (c) => step('pay', G(c.rng, ['I will pay with my card.', 'Voy a pagar con tarjeta.'], ['Here is my card.', 'Aquí está mi tarjeta.'], ['Okay, I have a card.', 'Bien, tengo tarjeta.']), SAY.takeCard(c.rng), [], LINKED),
+    (c) => step('sign', G(c.rng, ['Okay, thank you.', 'Bien, gracias.'], ['Great, thanks.', 'Genial, gracias.']), SAY.receipt(c.rng), [], LINKED),
+    opt((c) => step('bye', G(c.rng, ['Thank you. It was delicious.', 'Gracias. Estuvo delicioso.'], ['Thanks for everything.', 'Gracias por todo.'], ['We had a great time.', 'La pasamos muy bien.']), SAY.goodbye(c.rng), [], LINKED)),
+  ] },
+  { id: 'dividir', es: 'Dividir la cuenta', level: 1, ending: true, plan: () => [
+    (c) => step('ask', G(c.rng, ['Can we split the check?', '¿Podemos dividir la cuenta?'], ['Excuse me, can we pay separately?', 'Disculpe, ¿podemos pagar por separado?']), SAY.split(c.rng)),
+    (c) => step('how', G(c.rng, ['Two checks, please.', 'Dos cuentas, por favor.'], ['Half and half, please.', 'Mitad y mitad, por favor.']), SAY.takeCard(c.rng), [], LINKED),
+    (c) => step('bye', G(c.rng, ['Thanks. You were great.', 'Gracias. Estuvo muy bien.'], ['Thank you. Everything was so good.', 'Gracias. Todo estuvo muy bueno.']), SAY.goodbye(c.rng), [], LINKED),
   ] },
   { id: 'llevar', es: 'Para llevar', level: 1, entrance: true, plan: () => [
-    (c) => step('greet', L(`Hi, I want to order the ${c.main.en} to go.`, `Hola, quiero pedir ${c.main.es} para llevar.`), L('Of course. Anything else?', 'Claro. ¿Algo más?'), [c.main.word]),
-    (c) => step('more', L(`Yes, one ${c.drink.en}, please.`, `Sí, ${c.drink.es}, por favor.`), L('It will be ready in ten minutes.', 'Estará listo en diez minutos.'), [c.drink.word]),
-    () => step('name', L('Okay. I can wait here.', 'Bien. Puedo esperar aquí.'), L('Thank you. What is your name?', 'Gracias. ¿Cuál es su nombre?'), [], LINKED),
-    (c) => step('bag', L(`It is ${c.guestName}.`, `Es ${c.guestName}.`), L('Would you like a bag?', '¿Quiere una bolsa?'), [c.guestName.toLowerCase()]),
-    () => step('give', L('Yes, please. Is it ready?', 'Sí, por favor. ¿Ya está?'), L('Here is your order. Thank you for coming.', 'Aquí está su pedido. Gracias por venir.')),
+    (c) => step('greet', G(c.rng, [`Hi, I want to order the ${c.main.en} to go.`, `Hola, quiero pedir ${c.main.es} para llevar.`], [`Hello, can I get the ${c.main.en} to go?`, `Hola, ¿me da ${c.main.es} para llevar?`]), SAY.toGoElse(c.rng)),
+    (c) => step('more', G(c.rng, [`Yes, one ${c.drink.en}, please.`, `Sí, ${c.drink.es}, por favor.`], ['No, that is it. How long will it take?', 'No, eso es todo. ¿Cuánto va a tardar?']), SAY.tenMinutes(c.rng), [], LINKED),
+    (c) => step('name', G(c.rng, ['Okay. I can wait here.', 'Bien. Puedo esperar aquí.'], ['Great, I will wait.', 'Muy bien, espero.']), SAY.whatName(c.rng), [], LINKED),
+    opt((c) => step('give', G(c.rng, [`It is ${c.guestName}. Is it ready?`, `Es ${c.guestName}. ¿Ya está?`], [`${c.guestName}. Thank you.`, `${c.guestName}. Gracias.`]), SAY.orderReady(c.rng), [], LINKED)),
+  ] },
+  { id: 'regular', es: 'Clientes de siempre', level: 1, plan: () => [
+    (c) => step('greet', G(c.rng, ['Hi! We are back!', '¡Hola! ¡Volvimos!'], ['Hello again! Remember us?', '¡Hola otra vez! ¿Se acuerda de nosotros?'], ['Hi there! We loved it last time.', '¡Hola! Nos encantó la última vez.']), SAY.welcomeBack(c.rng)),
+    (c) => step('thanks', G(c.rng, ['Thanks! It is good to be back.', '¡Gracias! Qué bueno volver.'], ['Thank you! We love this place.', '¡Gracias! Nos encanta este lugar.']), SAY.sameAgain(c.rng), [], LINKED),
+    (c) => step('same', G(c.rng, [`Yes! The ${c.main.en}, please.`, `¡Sí! ${cap(c.main.es)}, por favor.`], [`Maybe. I loved the ${c.main.en}.`, `Tal vez. Me encantó ${c.main.es}.`]), SAY.thanksBack(c.rng), [], LINKED),
+  ] },
+  { id: 'sobras', es: 'Quieren llevar lo que sobró', level: 1, served: true, ending: true, plan: () => [
+    (c) => step('ask', G(c.rng, ['We are so full. Can we take this home?', 'Estamos muy llenos. ¿Podemos llevar esto?'], ['This was a lot of food. Do you have a box?', 'Fue mucha comida. ¿Tiene una caja?'], ['Can I get a box for this?', '¿Me da una caja para esto?']), SAY.box(c.rng)),
+    (c) => step('thanks', G(c.rng, ['Thank you. It was so good.', 'Gracias. Estuvo muy bueno.'], ['Thanks a lot.', 'Muchas gracias.']), SAY.pleasure(c.rng), [], LINKED),
+    (c) => step('check', G(c.rng, ['Can we also get the check?', '¿Nos trae también la cuenta?'], ['And the check, please.', 'Y la cuenta, por favor.']), SAY.hereCheck(c.rng), [], LINKED),
+  ] },
+
+  { id: 'primera_vez', es: 'Es su primera vez', level: 2, plan: () => [
+    (c) => step('greet', G(c.rng, ['Hi! Wow, this place is beautiful.', '¡Hola! Vaya, este lugar es hermoso.'], ['Hello! We heard this place is great.', '¡Hola! Nos dijeron que este lugar es muy bueno.'], ['Hi there. It looks so nice in here.', 'Hola. Se ve muy bonito aquí.']), SAY.firstTime(c.rng)),
+    (c) => step('first', G(c.rng, ['It is our first time.', 'Es nuestra primera vez.'], ['This is our very first time!', '¡Es nuestra primera vez!']), SAY.firstWelcome(c.rng), [], LINKED),
+    (c) => step('ask', G(c.rng, ['Thanks! What do you recommend?', '¡Gracias! ¿Qué recomienda?'], ['What is your favorite dish?', '¿Cuál es su plato favorito?'], ['What should we try?', '¿Qué deberíamos probar?']), recommend(c, c.main), [], LINKED),
+    opt((c) => step('how', G(c.rng, ['What is it like?', '¿Cómo es?'], ['Oh, what is in it?', 'Ah, ¿qué tiene?']), describe(c.main), [], LINKED)),
   ] },
   { id: 'recomendar', es: 'No sabe qué pedir', level: 2, plan: () => [
-    T.greet,
-    (c) => step('ask', L('What do you recommend?', '¿Qué recomienda?'), recommend(c.main)),
-    (c) => step('how', L('What is it like?', '¿Cómo es?'), c.main.how, [], LINKED),
-    opt((c) => (c.main.side ? step('side', L('Does it come with anything?', '¿Viene con algo?'), L('It comes with one side.', 'Viene con un acompañamiento.'), [], LINKED) : null)),
+    (c) => step('ask', G(c.rng, ['What do you recommend?', '¿Qué recomienda?'], ['I can not decide. What is good here?', 'No me decido. ¿Qué es bueno aquí?'], ['Everything looks good. What would you get?', 'Todo se ve bien. ¿Usted qué pediría?']), recommend(c, c.main)),
+    (c) => step('how', G(c.rng, ['What is it like?', '¿Cómo es?'], ['Oh, what is in it?', 'Ah, ¿qué tiene?'], ['Tell me more about it.', 'Cuénteme más.']), describe(c.main), [], LINKED),
     ...ORDER,
     T.thatsAll,
   ] },
   { id: 'alergia', es: 'Alergia seria', level: 2, tail: true, plan: () => [
-    T.greet,
-    (c) => step('allergy', L(`I have an allergy to ${c.allergy.en}.`, `Tengo alergia a ${c.allergy.es}.`), L('Thank you for telling me.', 'Gracias por decírmelo.'), [c.allergy.en]),
-    (c) => step('safe', L(`Can I eat the ${c.main.en}?`, `¿Puedo comer ${c.main.es}?`), KITCHEN, [c.main.word]),
-    () => step('promise', L('Can you promise me it is okay?', '¿Me promete que no hay problema?'), L("I don't want to guess. I will ask the chef.", 'No quiero adivinar. Le voy a preguntar al chef.')),
-    () => step('thanks', L('Okay. Thank you for checking.', 'Bien. Gracias por consultar.'), L('I will come right back.', 'Regreso enseguida.')),
+    (c) => step('allergy', G(c.rng, [`I have an allergy to ${c.allergy.en}.`, `Tengo alergia a ${c.allergy.es}.`], [`Before we order, I am allergic to ${c.allergy.en}.`, `Antes de ordenar, soy alérgico a ${c.allergy.es}.`]), SAY.thanksForTelling(c.rng)),
+    (c) => step('safe', G(c.rng, [`Can I eat the ${c.main.en}?`, `¿Puedo comer ${c.main.es}?`], [`Is the ${c.main.en} okay for me?`, `¿${cap(c.main.es)} está bien para mí?`]), SAY.kitchen(c.rng), [], LINKED),
+    (c) => step('promise', G(c.rng, ['Can you promise me it is okay?', '¿Me promete que no hay problema?'], ['Are you sure it will be okay?', '¿Está seguro de que no hay problema?']), SAY.chef(c.rng), [], LINKED),
+    opt((c) => step('thanks', G(c.rng, ['Okay. Thank you for checking.', 'Bien. Gracias por consultar.'], ['Thank you. I appreciate it.', 'Gracias. Se lo agradezco.']), SAY.thanksBack(c.rng), [], LINKED)),
   ] },
   { id: 'vino', es: 'Vino', level: 2, plan: () => [
-    T.greet,
-    () => step('ask', L('Can we see the wine list?', '¿Podemos ver la carta de vinos?'), L('Of course. Red or white wine?', 'Claro. ¿Vino tinto o blanco?')),
-    (c) => step('glass', L(`${cap(c.wine.en)}, please. Just one glass.`, `${cap(c.wine.es)}, por favor. Solo una copa.`), L('One glass. Can I see your ID, please?', 'Una copa. ¿Me muestra su identificación, por favor?'), [c.wine.word]),
-    opt(() => step('id', L('Sure, here you go.', 'Claro, aquí tiene.'), L("Thank you. I'll be right back.", 'Gracias. Ya regreso.'))),
-    opt((c) => step('snack', L('What do you have to eat with it?', '¿Qué tienen para comer con eso?'), L(`We have ${c.starter.en}.`, `Tenemos ${c.starter.es}.`))),
-    () => step('close', L('Okay, thank you.', 'Bien, gracias.'), L('Cheers, enjoy your drinks!', '¡Salud, disfruten sus bebidas!')),
+    (c) => step('ask', G(c.rng, ['Can we see the wine list?', '¿Podemos ver la carta de vinos?'], ['Do you have a wine list?', '¿Tiene carta de vinos?'], ['I would love a glass of wine.', 'Me encantaría una copa de vino.']), SAY.wineOrWhite(c.rng)),
+    (c) => step('glass', G(c.rng, [`${cap(c.wine.en)}, please. Just one glass.`, `${cap(c.wine.es)}, por favor. Solo una copa.`], [`A glass of ${c.wine.en}, please.`, `Una copa de ${c.wine.es}, por favor.`]), SAY.askId(c.rng), [], LINKED),
+    (c) => step('id', G(c.rng, ['Sure, here you go.', 'Claro, aquí tiene.'], ['Of course. Here it is.', 'Claro. Aquí está.']), SAY.thanksBack(c.rng), [], LINKED),
+    opt((c) => step('close', G(c.rng, ['Okay, thank you.', 'Bien, gracias.'], ['Thanks.', 'Gracias.']), SAY.cheers(c.rng))),
   ] },
   { id: 'vegetariano', es: 'Sin carne', level: 2, plan: () => [
-    T.greet,
-    () => step('tell', L('I do not eat meat.', 'No como carne.'), L('Thank you for telling me.', 'Gracias por decírmelo.'), ['meat']),
-    () => step('ask', L('Do you have a dish with no meat?', '¿Tienen algún plato sin carne?'), L('The tomato soup has no meat.', 'La sopa de tomate no tiene carne.')),
-    () => step('sure', L('Are you sure? No chicken at all?', '¿Seguro? ¿Nada de pollo?'), KITCHEN, [], LINKED),
-    () => step('order', L('Okay. I will try the soup.', 'Bien. Voy a probar la sopa.'), L('Great choice! Anything else?', '¡Excelente elección! ¿Algo más?'), ['soup']),
-    opt(() => step('close', L('Just some water, please.', 'Solo agua, por favor.'), BACK, ['water'])),
+    (c) => step('tell', G(c.rng, ['I do not eat meat.', 'No como carne.'], ['Hi, I am a vegetarian.', 'Hola, soy vegetariano.']), SAY.thanksForTelling(c.rng)),
+    (c) => step('ask', G(c.rng, ['Do you have a dish with no meat?', '¿Tienen algún plato sin carne?'], ['What can I eat here?', '¿Qué puedo comer aquí?']), SAY.noMeat(c.rng), [], LINKED),
+    (c) => step('order', G(c.rng, ['Okay. I will try the soup.', 'Bien. Voy a probar la sopa.'], ['Perfect, the soup then.', 'Perfecto, entonces la sopa.']), SAY.anythingElse(c.rng), [], LINKED),
+    opt((c) => step('close', G(c.rng, ['Just some water, please.', 'Solo agua, por favor.'], ['No, that is all. Thanks.', 'No, eso es todo. Gracias.']), SAY.back(c.rng), [], LINKED)),
   ] },
   { id: 'cumple', es: 'Cumpleaños', level: 2, plan: () => [
-    T.greet,
-    () => step('birthday', L('It is my birthday today!', '¡Hoy es mi cumpleaños!'), L('Happy birthday! Congratulations!', '¡Feliz cumpleaños! ¡Felicidades!'), ['birthday']),
-    () => step('candle', L('Can you bring a dessert with a candle?', '¿Puede traer un postre con una vela?'), KITCHEN, ['candle']),
-    (c) => step('drink', L(`Thank you! And ${c.drink.en} for me.`, `¡Gracias! Y ${c.drink.es} para mí.`), BACK, [c.drink.word]),
-    opt(() => step('photo', L('Can you take a picture of us?', '¿Nos toma una foto?'), L('Of course, no problem.', 'Claro, no hay problema.'))),
+    (c) => step('birthday', G(c.rng, ['It is my birthday today!', '¡Hoy es mi cumpleaños!'], ['We are celebrating my birthday tonight!', '¡Esta noche celebramos mi cumpleaños!']), SAY.birthday(c.rng)),
+    (c) => step('candle', G(c.rng, ['Can you bring a dessert with a candle?', '¿Puede traer un postre con una vela?'], ['Could we get a candle on a dessert?', '¿Nos pone una vela en un postre?']), SAY.kitchen(c.rng), [], LINKED),
+    (c) => step('drink', G(c.rng, [`Thank you! And ${c.drink.en} for me.`, `¡Gracias! Y ${c.drink.es} para mí.`], ['Thanks! You are the best.', '¡Gracias! Es usted el mejor.']), SAY.back(c.rng), [], LINKED),
+    opt((c) => step('photo', G(c.rng, ['Can you take a picture of us?', '¿Nos toma una foto?'], ['Would you mind taking our photo?', '¿Le molesta tomarnos una foto?']), SAY.photo(c.rng))),
   ] },
   { id: 'familia', es: 'Familia con niños', level: 2, party: (c) => c.family.size, plan: () => [
-    (c) => step('greet', L(`Hi, we are a family of ${c.family.en}.`, `Hola, somos una familia de ${c.family.es}.`), L('Welcome in! Are there any children?', '¡Bienvenidos! ¿Vienen niños?'), [c.family.en]),
-    () => step('chair', L('Yes, we have a baby.', 'Sí, tenemos un bebé.'), L('Would you like a high chair?', '¿Quieren una silla para bebé?'), ['baby']),
-    () => step('kids', L('Yes, please. Do you have food for kids?', 'Sí, por favor. ¿Tienen comida para niños?'), KITCHEN, ['kids']),
-    opt(() => step('crayons', L('Thank you. The kids are hungry.', 'Gracias. Los niños tienen hambre.'), L('Here are some crayons for the kids.', 'Aquí tienen crayones para los niños.'))),
-    ...ORDER,
-    T.thatsAll,
+    (c) => step('greet', G(c.rng, [`Hi, we are a family of ${c.family.en}.`, `Hola, somos una familia de ${c.family.es}.`], [`Hello! A table for ${c.family.en}, please.`, `¡Hola! Una mesa para ${c.family.es}, por favor.`]), SAY.children(c.rng)),
+    (c) => step('chair', G(c.rng, ['Yes, we have a baby.', 'Sí, tenemos un bebé.'], ['Yes, our little one is one year old.', 'Sí, nuestro pequeño tiene un año.']), SAY.highChair(c.rng), [], LINKED),
+    (c) => step('kids', G(c.rng, ['Yes, please. Do you have food for kids?', 'Sí, por favor. ¿Tienen comida para niños?'], ['Please. Is there a kids menu?', 'Por favor. ¿Hay menú para niños?']), SAY.kitchen(c.rng), [], LINKED),
+    opt((c) => step('crayons', G(c.rng, ['Thank you. The kids are hungry.', 'Gracias. Los niños tienen hambre.'], ['Thanks. They are getting bored.', 'Gracias. Ya se están aburriendo.']), SAY.crayons(c.rng))),
   ] },
   { id: 'prisa', es: 'Mesa con prisa', level: 2, plan: () => [
-    (c) => step('greet', L(`Hi, a table for ${c.party.en}. We have a show at eight.`, `Hola, una mesa para ${c.party.es}. Tenemos un show a las ocho.`), L('No problem. I will tell the kitchen.', 'No hay problema. Le aviso a la cocina.'), [c.party.en, 'eight']),
-    () => step('fast', L('What is the fastest dish?', '¿Cuál es el plato más rápido?'), KITCHEN),
-    ...ORDER,
-    () => step('check', L('Can we also get the check with the food?', '¿Nos trae también la cuenta con la comida?'), L('Of course. Thank you for telling me.', 'Claro. Gracias por decírmelo.'), ['check']),
-    opt(() => step('close', L('Thanks. Sorry for the rush.', 'Gracias. Perdón por la prisa.'), L('No problem. Have a great night!', 'No hay problema. ¡Que tengan linda noche!'))),
+    (c) => step('greet', G(c.rng, [`Hi, a table for ${c.party.en}. We have a show at eight.`, `Hola, una mesa para ${c.party.es}. Tenemos un show a las ocho.`], ['Hi! We are in a big hurry tonight.', '¡Hola! Tenemos mucha prisa esta noche.']), SAY.rushOk(c.rng)),
+    (c) => step('fast', G(c.rng, ['What is the fastest dish?', '¿Cuál es el plato más rápido?'], ['What can you bring us quickly?', '¿Qué nos puede traer rápido?']), SAY.kitchen(c.rng), [], LINKED),
+    (c) => step('check', G(c.rng, ['Can we also get the check with the food?', '¿Nos trae también la cuenta con la comida?'], ['Please bring the check with the food.', 'Traiga la cuenta con la comida, por favor.']), R('Di que claro y agradece que te avisen.', ['Of course. Thank you for telling me.', 'Claro. Gracias por decírmelo.'], ['Sure. I will bring them together.', 'Claro. Los traigo juntos.'])(c.rng)),
+    opt((c) => step('close', G(c.rng, ['Thanks. Sorry for the rush.', 'Gracias. Perdón por la prisa.'], ['You are saving us. Thanks!', 'Nos está salvando. ¡Gracias!']), SAY.noProblem(c.rng), [], LINKED)),
   ] },
+  { id: 'compartir', es: 'Quieren compartir', level: 2, plan: () => [
+    (c) => step('ask', G(c.rng, [`Can we share the ${c.main.en}?`, `¿Podemos compartir ${c.main.es}?`], [`We want to split the ${c.main.en}. Is that okay?`, `Queremos compartir ${c.main.es}. ¿Está bien?`]), SAY.safeShare(c.rng)),
+    (c) => step('start', G(c.rng, [`Thanks! Can we start with the ${c.starter.en}?`, `¡Gracias! ¿Empezamos con ${c.starter.es}?`], [`And the ${c.starter.en} first, please.`, `Y primero ${c.starter.es}, por favor.`]), SAY.anythingElse(c.rng), [], LINKED),
+    (c) => step('close', ALL_SET(c), SAY.putIn(c.rng), [], LINKED),
+  ] },
+  { id: 'olvido', es: 'Se olvidó su bebida', level: 2, tense: true, plan: () => [
+    (c) => step('problem', G(c.rng, ['Excuse me, I never got my drink.', 'Disculpe, nunca llegó mi bebida.'], ['Hi, I think you forgot my drink.', 'Hola, creo que olvidó mi bebida.']), SAY.sorry(c.rng)),
+    (c) => step('what', G(c.rng, [`It was ${c.drink.en}.`, `Era ${c.drink.es}.`], [`I ordered ${c.drink.en}.`, `Pedí ${c.drink.es}.`]), SAY.drinkComing(c.rng), [], LINKED),
+    (c) => step('thanks', G(c.rng, ['Thank you. It is okay.', 'Gracias. No hay problema.'], ['No worries. Thanks.', 'Tranquilo. Gracias.']), SAY.patience(c.rng), [], LINKED),
+  ] },
+
   { id: 'queja', es: 'Hay un problema', level: 3, tail: true, tense: true, plan: () => [
-    (c) => step('problem', pick(c.rng, [
-      L(`Excuse me, this is not my ${c.main.en}.`, `Disculpe, este plato no es ${c.main.es}.`),
-      L(`Excuse me, my ${c.main.en} is cold.`, `Disculpe, ${c.main.es} no está caliente.`),
-    ]), L("I'm so sorry about that.", 'Lo siento mucho.'), [c.main.word]),
-    () => step('what', L('What can you do about it?', '¿Qué puede hacer?'), L('Let me fix that for you.', 'Déjeme arreglarlo.')),
-    () => step('bill', L('Can you take it off the bill?', '¿Lo puede quitar de la cuenta?'), L('I will talk to my manager.', 'Voy a hablar con mi gerente.')),
-    () => step('how_long', L('How long will it take?', '¿Cuánto va a tardar?'), KITCHEN),
-    opt(() => step('thanks', L('Okay. Thank you.', 'Bien. Gracias.'), L('Thank you for your patience.', 'Gracias por su paciencia.'))),
-    opt(() => step('after', L('It is okay. These things happen.', 'Está bien. Son cosas que pasan.'), L('I understand. Thank you for telling me.', 'Entiendo. Gracias por decírmelo.'))),
+    (c) => step('problem', G(c.rng, [`Excuse me, this is not my ${c.main.en}.`, `Disculpe, este plato no es ${c.main.es}.`], [`Excuse me, my ${c.main.en} is cold.`, `Disculpe, ${c.main.es} no está caliente.`], [`Sorry, there is a problem with my ${c.main.en}.`, `Perdón, hay un problema con ${c.main.es}.`]), SAY.sorry(c.rng)),
+    (c) => step('what', G(c.rng, ['What can you do about it?', '¿Qué puede hacer?'], ['Can you do something?', '¿Puede hacer algo?']), SAY.fix(c.rng), [], LINKED),
+    (c) => step('bill', G(c.rng, ['Can you take it off the bill?', '¿Lo puede quitar de la cuenta?'], ['Do I still have to pay for it?', '¿Todavía tengo que pagarlo?']), SAY.manager(c.rng), [], LINKED),
+    (c) => step('thanks', G(c.rng, ['Okay. Thank you.', 'Bien. Gracias.'], ['It is okay. These things happen.', 'Está bien. Son cosas que pasan.']), SAY.patience(c.rng), [], LINKED),
+    opt((c) => step('how_long', G(c.rng, ['How long will it take?', '¿Cuánto va a tardar?'], ['Will it take long?', '¿Va a tardar mucho?']), SAY.kitchen(c.rng), [], LINKED)),
   ] },
   { id: 'demora', es: 'Comida demorada', level: 3, tail: true, tense: true, plan: () => [
-    () => step('problem', L('Excuse me, we have been waiting a long time.', 'Disculpe, llevamos mucho tiempo esperando.'), L('Sorry for the wait.', 'Perdón por la espera.'), ['waiting']),
-    (c) => step('where', L(`Where is my ${c.main.en}?`, `¿Dónde está ${c.main.es}?`), KITCHEN, [c.main.word]),
-    () => step('late', L('We need to leave soon.', 'Nos tenemos que ir pronto.'), L('I will tell the kitchen right away.', 'Le aviso a la cocina enseguida.')),
-    () => step('bill', L('Can you do something for us?', '¿Puede hacer algo por nosotros?'), L('I will talk to my manager.', 'Voy a hablar con mi gerente.')),
-    () => step('thanks', L('Okay. Please hurry.', 'Bien. Apúrese, por favor.'), L('Thank you for your patience.', 'Gracias por su paciencia.')),
-    opt(() => step('after', L('Is the food ready now?', '¿Ya está lista la comida?'), L('Your food is ready.', 'Su comida está lista.'))),
+    (c) => step('problem', G(c.rng, ['Excuse me, we have been waiting a long time.', 'Disculpe, llevamos mucho tiempo esperando.'], ['Hi, where is our food?', 'Hola, ¿dónde está nuestra comida?'], ['It has been almost an hour.', 'Ya casi pasó una hora.']), SAY.sorryWait(c.rng)),
+    (c) => step('where', G(c.rng, [`Where is my ${c.main.en}?`, `¿Dónde está ${c.main.es}?`], ['Is it almost ready?', '¿Ya casi está?']), SAY.kitchen(c.rng), [], LINKED),
+    (c) => step('late', G(c.rng, ['We need to leave soon.', 'Nos tenemos que ir pronto.'], ['We can not wait much longer.', 'No podemos esperar mucho más.']), SAY.tellKitchen(c.rng), [], LINKED),
+    (c) => step('thanks', G(c.rng, ['Okay. Please hurry.', 'Bien. Apúrese, por favor.'], ['Okay. Thanks for checking.', 'Bien. Gracias por revisar.']), SAY.patience(c.rng), [], LINKED),
   ] },
   { id: 'turista', es: 'Turista con dudas', level: 3, plan: () => [
-    () => step('greet', L('Hello! We are visiting from far away.', '¡Hola! Venimos de muy lejos.'), L('Welcome! Enjoy your time in Miami.', '¡Bienvenidos! Disfruten su tiempo en Miami.')),
-    () => step('water', L('What is still water?', '¿Qué es agua sin gas?'), L('It is water with no bubbles.', 'Es agua sin burbujas.'), ['water']),
-    () => step('side', L('And what is a side?', '¿Y qué es un acompañamiento?'), L('It is a small dish with your meal.', 'Es un plato pequeño con su comida.'), ['side']),
-    () => step('tip', L('Is the tip included here?', '¿La propina está incluida aquí?'), L('Let me check about the tip.', 'Déjeme consultar lo de la propina.'), ['tip']),
-    ...ORDER,
-    T.thatsAll,
+    (c) => step('greet', G(c.rng, ['Hello! We are visiting from far away.', '¡Hola! Venimos de muy lejos.'], ['Hi! We just got to Miami.', '¡Hola! Acabamos de llegar a Miami.']), SAY.miamiWelcome(c.rng)),
+    (c) => step('water', L('Thanks! What is still water?', '¡Gracias! ¿Qué es agua sin gas?'), SAY.explainWater(c.rng), [], LINKED),
+    (c) => step('side', L('And what is a side?', '¿Y qué es un acompañamiento?'), SAY.explainSide(c.rng), [], LINKED),
+    (c) => step('tip', G(c.rng, ['Is the tip included here?', '¿La propina está incluida aquí?'], ['Do we leave a tip here?', '¿Aquí se deja propina?']), SAY.tipCheck(c.rng), [], LINKED),
   ] },
   { id: 'cambio', es: 'Cambia su pedido', level: 3, plan: () => [
-    () => step('ask', L('Excuse me, can I change my order?', 'Disculpe, ¿puedo cambiar mi pedido?'), L('Of course. What would you like?', 'Claro. ¿Qué le gustaría?'), ['change']),
-    (c) => step('new', L(`I want the ${c.alt.en}, not the ${c.main.en}.`, `Quiero ${c.alt.es}, no ${c.main.es}.`), L(`Okay, the ${c.alt.en}. I will tell the kitchen.`, `Bien, ${c.alt.es}. Le aviso a la cocina.`), [c.alt.word, c.main.word]),
-    () => step('sorry', L('Is that okay? I am sorry.', '¿Está bien? Lo siento.'), L('No problem. It is okay.', 'No hay problema. Está bien.'), [], LINKED),
-    () => step('how_long', L('Will it take a long time?', '¿Va a tardar mucho?'), KITCHEN),
-    () => step('drink', L('Okay. Can I get more water while I wait?', 'Bien. ¿Me trae más agua mientras espero?'), BACK, ['water']),
-    opt(() => step('thanks', L('Thank you for your help.', 'Gracias por su ayuda.'), L('It was a pleasure.', 'Fue un placer.'))),
+    (c) => step('ask', G(c.rng, ['Excuse me, can I change my order?', 'Disculpe, ¿puedo cambiar mi pedido?'], ['Sorry, I changed my mind about my food.', 'Perdón, cambié de opinión sobre mi comida.']), SAY.changeOk(c.rng)),
+    (c) => step('new', L(`I want the ${c.alt.en}, not the ${c.main.en}.`, `Quiero ${c.alt.es}, no ${c.main.es}.`), R(`Confirma que ahora es ${c.alt.es} y que avisarás a la cocina.`, [`Okay, the ${c.alt.en}. I will tell the kitchen.`, `Bien, ${c.alt.es}. Le aviso a la cocina.`], [`Sure, the ${c.alt.en}. Let me tell the kitchen.`, `Claro, ${c.alt.es}. Déjeme avisar a la cocina.`])(c.rng), [], LINKED),
+    (c) => step('sorry', G(c.rng, ['Is that okay? I am sorry.', '¿Está bien? Lo siento.'], ['Sorry about that.', 'Perdón por eso.']), SAY.noProblem(c.rng), [], LINKED),
+    (c) => step('how_long', G(c.rng, ['Will it take a long time?', '¿Va a tardar mucho?'], ['How long will it take now?', '¿Cuánto va a tardar ahora?']), SAY.kitchen(c.rng), [], LINKED),
   ] },
   { id: 'grupo', es: 'Grupo grande', level: 3, entrance: true, party: () => 8, plan: () => [
-    () => step('greet', L('Hi, we are a big group. We are eight.', 'Hola, somos un grupo grande. Somos ocho.'), L('Welcome! Let me check our tables.', '¡Bienvenidos! Déjeme revisar las mesas.'), ['eight']),
-    () => step('res', L('We do not have a reservation.', 'No tenemos reservación.'), L('No problem. One moment, please.', 'No hay problema. Un momento, por favor.'), ['reservation']),
-    () => step('together', L('Can we all sit together?', '¿Podemos sentarnos todos juntos?'), L('Let me check. Thanks for waiting.', 'Déjeme ver. Gracias por esperar.'), ['together']),
-    () => step('pay', L('And can we pay separately?', '¿Y podemos pagar por separado?'), L('Yes, we can split it up to four times.', 'Sí, podemos dividirla hasta en cuatro pagos.')),
-    () => step('split', L('Oh, only four? Okay.', 'Ah, ¿solo cuatro? Bien.'), L('Yes. Your table is ready.', 'Sí. Su mesa está lista.'), [], LINKED),
-    opt(() => step('close', L('Great, thank you very much.', 'Genial, muchas gracias.'), L('Please follow me.', 'Síganme, por favor.'))),
+    (c) => step('greet', G(c.rng, ['Hi, we are a big group. We are eight.', 'Hola, somos un grupo grande. Somos ocho.'], ['Hello! Do you have room for eight people?', '¡Hola! ¿Tienen lugar para ocho personas?']), SAY.letMeCheckTables(c.rng)),
+    (c) => step('res', G(c.rng, ['We do not have a reservation.', 'No tenemos reservación.'], ['Sorry, we did not call first.', 'Perdón, no llamamos antes.']), SAY.noProblem(c.rng), [], LINKED),
+    (c) => step('together', L('Can we all sit together?', '¿Podemos sentarnos todos juntos?'), SAY.checkOneMoment(c.rng), [], LINKED),
+    (c) => step('pay', L('And can we pay separately?', '¿Y podemos pagar por separado?'), SAY.splitFour(c.rng), [], LINKED),
   ] },
   { id: 'aniversario', es: 'Aniversario', level: 3, party: () => 2, plan: () => [
-    () => step('greet', L('Good evening. It is our anniversary.', 'Buenas noches. Es nuestro aniversario.'), L('Congratulations! Please follow me.', '¡Felicidades! Síganme, por favor.'), ['anniversary']),
-    () => step('quiet', L('Do you have a quiet table?', '¿Tiene una mesa tranquila?'), L('Let me check. One moment, please.', 'Déjeme ver. Un momento, por favor.'), ['quiet']),
-    (c) => step('wine', L(`Thank you. Two glasses of ${c.wine.en}, please.`, `Gracias. Dos copas de ${c.wine.es}, por favor.`), L('Of course. Can I see your ID, please?', 'Claro. ¿Me muestra su identificación, por favor?'), [c.wine.word]),
-    () => step('id', L('Here you go. Now we can order.', 'Aquí tiene. Ya podemos ordenar.'), L('Thank you. What would you like for dinner?', 'Gracias. ¿Qué quieren cenar?')),
-    ...ORDER,
-    T.thatsAll,
-    opt(() => step('photo', L('Can you take a picture of us?', '¿Nos toma una foto?'), L('Of course, no problem.', 'Claro, no hay problema.'))),
+    (c) => step('greet', G(c.rng, ['Good evening. It is our anniversary.', 'Buenas noches. Es nuestro aniversario.'], ['Hi! We are celebrating ten years tonight.', '¡Hola! Celebramos diez años esta noche.']), SAY.congrats(c.rng)),
+    (c) => step('quiet', G(c.rng, ['Do you have a quiet table?', '¿Tiene una mesa tranquila?'], ['Could we get a table by the window?', '¿Nos da una mesa junto a la ventana?']), SAY.checkOneMoment(c.rng), [], LINKED),
+    (c) => step('wine', G(c.rng, [`Thank you. Two glasses of ${c.wine.en}, please.`, `Gracias. Dos copas de ${c.wine.es}, por favor.`], [`Perfect. We would love ${c.wine.en}.`, `Perfecto. Nos encantaría ${c.wine.es}.`]), SAY.askId(c.rng), [], LINKED),
+    (c) => step('id', G(c.rng, ['Here you go. Now we can order.', 'Aquí tiene. Ya podemos ordenar.'], ['Of course, here you go.', 'Claro, aquí tiene.']), SAY.thanksBack(c.rng), [], LINKED),
   ] },
   { id: 'cambiar_mesa', es: 'Quiere otra mesa', level: 3, tense: true, plan: () => [
-    (c) => step('problem', pick(c.rng, [L('Excuse me, it is too cold at this table.', 'Disculpe, hace mucho frío en esta mesa.'), L('Excuse me, it is too loud at this table.', 'Disculpe, hay mucho ruido en esta mesa.')]), L("I'm sorry. Would you like another table?", 'Lo siento. ¿Quieren otra mesa?')),
-    () => step('where', L('Yes, please. Near the window.', 'Sí, por favor. Cerca de la ventana.'), L('Let me check. One moment, please.', 'Déjeme ver. Un momento, por favor.'), ['window']),
-    () => step('can', L('Is it possible?', '¿Se puede?'), L('Yes. Please follow me.', 'Sí. Síganme, por favor.'), [], LINKED),
-    () => step('drinks', L('Great. Can you bring our drinks?', 'Genial. ¿Puede traer nuestras bebidas?'), L('Of course. I will bring your drinks.', 'Claro. Les traigo sus bebidas.'), ['drinks']),
-    () => step('thanks', L('This is much better. Thank you.', 'Así está mucho mejor. Gracias.'), L('It was a pleasure.', 'Fue un placer.')),
+    (c) => step('problem', G(c.rng, ['Excuse me, it is too cold at this table.', 'Disculpe, hace mucho frío en esta mesa.'], ['Excuse me, it is too loud at this table.', 'Disculpe, hay mucho ruido en esta mesa.'], ['Sorry, this table is not clean.', 'Perdón, esta mesa no está limpia.']), SAY.otherTable(c.rng)),
+    (c) => step('where', G(c.rng, ['Yes, please. Near the window.', 'Sí, por favor. Cerca de la ventana.'], ['Yes, please. Something quiet.', 'Sí, por favor. Algo tranquilo.']), SAY.checkOneMoment(c.rng), [], LINKED),
+    (c) => step('drinks', G(c.rng, ['Great. Can you bring our drinks?', 'Genial. ¿Puede traer nuestras bebidas?'], ['Thanks. Can you bring our drinks over?', 'Gracias. ¿Nos lleva las bebidas?']), SAY.newDrinks(c.rng), [], LINKED),
+    (c) => step('thanks', G(c.rng, ['This is much better. Thank you.', 'Así está mucho mejor. Gracias.'], ['So much better. Thanks.', 'Mucho mejor. Gracias.']), SAY.pleasure(c.rng), [], LINKED),
   ] },
+  { id: 'cerrando', es: 'La cocina va a cerrar', level: 3, plan: () => [
+    (c) => step('greet', G(c.rng, ['Hi! Are you still open?', '¡Hola! ¿Todavía están abiertos?'], ['Hello. Is it too late for dinner?', 'Hola. ¿Es muy tarde para cenar?']), SAY.closingSoon(c.rng)),
+    (c) => step('quick', G(c.rng, [`Okay. Can we get the ${c.main.en} quickly?`, `Bien. ¿Nos trae ${c.main.es} rápido?`], ['Oh, then we will order now.', 'Ah, entonces ordenamos ya.']), SAY.whatOrder(c.rng), [], LINKED),
+    ...ORDER,
+    T.thatsAll,
+  ] },
+
+  { id: 'cena', es: 'Toda la atención', level: 4, plan: () => [T.intro, T.feel, T.drinkOrder, ...ORDER, T.thatsAll] },
   { id: 'agotado', es: 'Se acabó el plato', level: 4, tense: true, plan: () => [
-    (c) => step('order', L(`I will have the ${c.main.en}.`, `Quiero ${c.main.es}.`), L("I'm so sorry. We do not have that tonight.", 'Lo siento mucho. Hoy no tenemos ese plato.'), [c.main.word]),
-    (c) => step('else', L('Oh no. What else is good?', 'Qué lástima. ¿Qué más está bueno?'), recommend(c.alt), [], LINKED),
-    (c) => step('how', L('What is it like?', '¿Cómo es?'), c.alt.how, [], LINKED),
-    (c) => step('confirm', L('Okay, I will have that.', 'Bien, voy a pedir ese.'), L(`Let me confirm. One ${c.alt.en}.`, `Déjeme confirmar. ${cap(c.alt.es)}.`), [], LINKED),
-    () => step('thanks', L('Thanks for your help.', 'Gracias por su ayuda.'), L('Thank you for your patience.', 'Gracias por su paciencia.')),
+    (c) => step('order', G(c.rng, [`I will have the ${c.main.en}.`, `Quiero ${c.main.es}.`], [`Can I get the ${c.main.en}, please?`, `¿Me trae ${c.main.es}, por favor?`]), SAY.soldOut(c.rng)),
+    (c) => step('else', G(c.rng, ['Oh no. What else is good?', 'Qué lástima. ¿Qué más está bueno?'], ['That is too bad. What do you recommend?', 'Qué pena. ¿Qué recomienda?']), recommend(c, c.alt), [], LINKED),
+    (c) => step('how', G(c.rng, ['What is it like?', '¿Cómo es?'], ['Oh, what is in it?', 'Ah, ¿qué tiene?']), describe(c.alt), [], LINKED),
+    (c) => step('confirm', G(c.rng, ['Okay, I will have that.', 'Bien, voy a pedir ese.'], ['Sounds great. I will try it.', 'Suena muy bien. Lo voy a probar.']), R(`Confirma el pedido: ${c.alt.es}.`, [`Let me confirm. One ${c.alt.en}.`, `Déjeme confirmar. ${cap(c.alt.es)}.`], [`Perfect. One ${c.alt.en}.`, `Perfecto. ${cap(c.alt.es)}.`])(c.rng), [], LINKED),
   ] },
   { id: 'derrame', es: 'Se regó una bebida', level: 4, tense: true, plan: () => [
-    () => step('spill', L('Oh no! My drink spilled on the table.', '¡Ay no! Mi bebida se regó en la mesa.'), L("I'm so sorry. Let me clean that up.", 'Lo siento mucho. Déjeme limpiar eso.'), ['drink']),
-    () => step('shirt', L('It is on my shirt too.', 'También me cayó en la camisa.'), L('I will bring you some napkins.', 'Le traigo unas servilletas.'), ['shirt'], LINKED),
-    () => step('new', L('Can I get a new drink?', '¿Me pueden traer otra bebida?'), L('Let me talk to my manager.', 'Déjeme hablar con mi gerente.')),
-    () => step('fault', L('Thank you. It was my fault.', 'Gracias. Fue mi culpa.'), L('No problem. It is okay.', 'No hay problema. Está bien.')),
-    opt(() => step('after', L('You are very kind.', 'Es muy amable.'), L('Thank you. It was a pleasure.', 'Gracias. Fue un placer.'))),
+    (c) => step('spill', G(c.rng, ['Oh no! My drink spilled on the table.', '¡Ay no! Mi bebida se regó en la mesa.'], ['Excuse me, I spilled my water.', 'Disculpe, se me regó el agua.']), SAY.clean(c.rng)),
+    (c) => step('shirt', G(c.rng, ['It is on my shirt too.', 'También me cayó en la camisa.'], ['My shirt is all wet.', 'Mi camisa está toda mojada.']), SAY.napkins(c.rng), [], LINKED),
+    (c) => step('new', G(c.rng, ['Can I get a new drink?', '¿Me pueden traer otra bebida?'], ['Could I have another drink?', '¿Me trae otra bebida?']), SAY.manager(c.rng), [], LINKED),
+    (c) => step('fault', G(c.rng, ['Thank you. It was my fault.', 'Gracias. Fue mi culpa.'], ['Thanks. You are very kind.', 'Gracias. Es muy amable.']), SAY.noProblem(c.rng), [], LINKED),
+  ] },
+  { id: 'tarjeta', es: 'La tarjeta no pasa', level: 4, ending: true, tense: true, plan: () => [
+    (c) => step('pay', G(c.rng, ['Here is my card.', 'Aquí está mi tarjeta.'], ['I will pay with this card.', 'Voy a pagar con esta tarjeta.']), SAY.cardFailed(c.rng)),
+    (c) => step('why', G(c.rng, ['Oh no. Really?', 'Ay no. ¿En serio?'], ['That is strange. Are you sure?', 'Qué raro. ¿Está seguro?']), SAY.otherCard(c.rng), [], LINKED),
+    (c) => step('other', G(c.rng, ['Yes, try this one, please.', 'Sí, pruebe esta, por favor.'], ['I have cash. Here you go.', 'Tengo efectivo. Aquí tiene.']), SAY.thanksBack(c.rng), [], LINKED),
+    (c) => step('sorry', G(c.rng, ['Sorry about that.', 'Perdón por eso.'], ['I am so sorry.', 'Lo siento mucho.']), SAY.noProblem(c.rng), [], LINKED),
+  ] },
+  { id: 'cuenta_mal', es: 'Error en la cuenta', level: 4, ending: true, tense: true, plan: () => [
+    (c) => step('problem', G(c.rng, ['Excuse me, I think this check is wrong.', 'Disculpe, creo que esta cuenta está mal.'], ['Sorry, I did not order this wine.', 'Perdón, yo no pedí este vino.']), SAY.checkBill(c.rng)),
+    (c) => step('what', G(c.rng, ['We did not have any dessert.', 'No pedimos postre.'], ['There is one drink too many.', 'Hay una bebida de más.']), SAY.manager(c.rng), [], LINKED),
+    (c) => step('wait', G(c.rng, ['Okay. We can wait a moment.', 'Bien. Podemos esperar un momento.'], ['Thank you. We can wait.', 'Gracias. Podemos esperar.']), SAY.patience(c.rng), [], LINKED),
+    (c) => step('bye', G(c.rng, ['Thanks. The food was great.', 'Gracias. La comida estuvo muy buena.'], ['Thank you for your help.', 'Gracias por su ayuda.']), SAY.goodbye(c.rng), [], LINKED),
   ] },
 ];
 
-// --- Niveles: cada uno trae situaciones nuevas y mesas más largas. ---
+// --- Niveles: cada uno trae situaciones nuevas. Las mesas son cortas: un momento concreto de la conversación. ---
 export const LEVELS = [
-  { level: 1, from: 0, min: 4, max: 6 }, { level: 2, from: 4, min: 5, max: 7 },
-  { level: 3, from: 10, min: 6, max: 8 }, { level: 4, from: 20, min: 7, max: 10 },
+  { level: 1, from: 0, min: 3, max: 4 }, { level: 2, from: 4, min: 3, max: 5 },
+  { level: 3, from: 10, min: 3, max: 5 }, { level: 4, from: 20, min: 3, max: 6 },
 ];
 export function levelFor(done) {
   const current = [...LEVELS].reverse().find((l) => done >= l.from);
@@ -422,16 +634,19 @@ function chooseScene(rng, level, avoid, only) {
   return pick(rng, (fresh.length ? fresh : open).flatMap((s) => Array(s.weight ?? 1).fill(s)));
 }
 
-/** Intercala imprevistos solo donde el alumno no acaba de hacer una pregunta, para que la charla siga teniendo sentido. */
-function addExtras(steps, scene, target, rng) {
+/**
+ * A veces el cliente sale con algo inesperado, como en la vida real: como mucho una vez por mesa y sin cortar lo que se venía hablando.
+ * La mesa no se alarga por alargar: solo entra si cabe.
+ */
+const EXTRA_CHANCE = 0.3;
+function addExtras(steps, scene, max, rng, c) {
+  if (rng() >= EXTRA_CHANCE) return;
   const pool = scene.entrance || scene.ending ? [...ANYWHERE] : [...ANYWHERE, ...AT_TABLE, ...(scene.served ? SERVED : [])];
-  while (steps.length < target && pool.length) {
-    const lines = pool.splice(Math.floor(rng() * pool.length), 1)[0]();
-    if (steps.length + lines.length > target || steps.some((s) => s.guest.en === lines[0].guest.en)) continue;
-    const seams = scene.tail ? [] : [...steps.keys()].filter((i) => i > 0 && !steps[i].linked && !steps[i - 1].say.en.endsWith('?'));
-    if (!seams.length && steps.at(-1).say.en.endsWith('?')) break;
-    steps.splice(seams.length ? pick(rng, seams) : steps.length, 0, ...lines);
-  }
+  const lines = pick(rng, pool)(c);
+  if (steps.length + lines.length > max || steps.some((s) => s.guest.en === lines[0].guest.en)) return;
+  const seams = scene.tail ? [] : [...steps.keys()].filter((i) => i > 0 && !steps[i].linked && !steps[i - 1].say.en.endsWith('?'));
+  if (!seams.length && (scene.ending || scene.tail || steps.at(-1).say.en.endsWith('?'))) return;
+  steps.splice(seams.length ? pick(rng, seams) : steps.length, 0, ...lines);
 }
 
 export function buildMesa(rng = Math.random, { done = 0, avoidScenes = [], avoidNames = [], scene: only = null } = {}) {
@@ -450,11 +665,12 @@ export function buildMesa(rng = Math.random, { done = 0, avoidScenes = [], avoid
     plan[optional.splice(Math.floor(rng() * optional.length), 1)[0]] = null;
   }
   const steps = plan.filter(Boolean).map((fn) => fn(c)).filter(Boolean);
-  addExtras(steps, scene, target, rng);
+  addExtras(steps, scene, info.max, rng, c);
 
   // El ánimo se presenta al llegar; en plena queja, un "qué felices estamos" no tendría sentido.
   const first = steps[0];
-  if (first.kind === 'greet') first.guest = L(`${first.guest.en}${mood.open[0]}`, `${first.guest.es}${mood.open[1]}`);
+  const fitsDoor = !(scene.entrance && moodId === 'unsure') && !(scene.id === 'familia' && moodId === 'unsure') && !(scene.id === 'grupo' && moodId === 'unsure');
+  if (first.kind === 'greet' && fitsDoor && rng() < 0.4) first.guest = L(`${first.guest.en}${mood.open[0]}`, `${first.guest.es}${mood.open[1]}`);
   const closing = scene.tense
     ? pick(rng, [L('Thank you for your help.', 'Gracias por su ayuda.'), L('Okay. Thank you.', 'Bien. Gracias.')])
     : pick(rng, [mood.closing, L('Perfect, thank you so much!', '¡Perfecto, muchas gracias!'), L('You are very kind. Thank you!', 'Es muy amable. ¡Gracias!')]);
