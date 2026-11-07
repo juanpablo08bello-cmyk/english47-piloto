@@ -1,5 +1,10 @@
 # Registro de cambios
 
+## 0.5.3-piloto (2026-11-06)
+
+- La grabación ya no pierde el inicio de la voz: "Habla ahora" solo aparece cuando se está grabando, se espera a que el micrófono entregue sonido y se quitan los filtros de eco y ruido, que al arrancar recortan las primeras sílabas.
+- Voces masculinas latinas para imitar, alternando México y Venezuela: cada frase nueva cambia de voz y la misma frase conserva la suya: "Escuchar cómo se dice", tocar una palabra, Mejorar y los ejemplos de Hablar. Los clientes conservan sus voces.
+
 ## 0.5.2-piloto (2026-11-06)
 
 - Hablar es solo por voz: sin cuadros para escribir, también en el resumen. La app entiende lo que dijiste y los ejemplos se tocan para oírlos. Si no hay micrófono, se elige una respuesta tocándola.

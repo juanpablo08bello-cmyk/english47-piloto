@@ -131,6 +131,7 @@ test('solo se aceptan voces y acentos del catálogo', () => {
   assert.equal(ok.azure, 'en-GB-SoniaNeural');
   assert.match(ok.style, /British/);
   assert.equal(speechPersona({ azure: 'en-US-Fake"><script>Neural' }).azure, null);
+  assert.equal(speechPersona({ azure: 'es-VE-SebastianNeural' }).azure, 'es-VE-SebastianNeural', 'la voz modelo venezolana está permitida');
   assert.equal(speechPersona(null), null);
 });
 

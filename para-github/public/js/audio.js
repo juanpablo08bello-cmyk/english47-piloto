@@ -173,6 +173,8 @@ const MIC_ERRORS = {
 };
 
 const SPEECH_LEVEL = 12;
+const MIC_WARMUP_MS = 1200; // tope de espera a que el micrófono entregue sonido
+const wait = (ms) => new Promise((ok) => setTimeout(ok, ms));
 
 export class TurnRecorder {
   constructor({ maxMs = 60000, onAutoStop, stopOnSilenceMs = 0, onLevel } = {}) {
@@ -191,13 +193,19 @@ export class TurnRecorder {
     const epoch = ++this.epoch;
     this.starting = true;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+      // Sin eco ni supresión de ruido: al arrancar se comen las primeras sílabas, y el cliente no suena mientras se graba.
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: true } });
       // El usuario pudo salir mientras el sistema mostraba el permiso.
       if (epoch !== this.epoch) {
         stream.getTracks().forEach((t) => t.stop());
         throw new ApiError(0, 'cancelled', 'La grabación se canceló.');
       }
       this.stream = stream;
+      await this.warmUp(stream);
+      if (epoch !== this.epoch) {
+        stream.getTracks().forEach((t) => t.stop());
+        throw new ApiError(0, 'cancelled', 'La grabación se canceló.');
+      }
       const MR = window.MediaRecorder;
       const mimeType = PREFERRED.find((t) => MR.isTypeSupported?.(t));
       this.recorder = new MR(stream, mimeType ? { mimeType } : undefined);
@@ -208,8 +216,11 @@ export class TurnRecorder {
         this.abort();
       };
       this.startedAt = performance.now();
+      const started = this.ctx ? new Promise((ok) => { this.recorder.onstart = ok; setTimeout(ok, 250); }) : null;
       this.recorder.start(); this.active = true;
       this.watchLevel();
+      // "Habla ahora" solo se muestra cuando ya se está grabando.
+      if (started) await started;
       this.timer = setTimeout(() => {
         if (!this.active) return;
         if (this.onAutoStop) this.onAutoStop();
@@ -223,13 +234,33 @@ export class TurnRecorder {
     } finally { this.starting = false; }
   }
 
+  /** Espera a que el micrófono entregue sonido real antes de grabar: abrirlo no significa que ya escuche. */
+  async warmUp(stream) {
+    const Context = window.AudioContext || window.webkitAudioContext;
+    if (!Context) return;
+    try {
+      this.ctx = new Context();
+      if (this.ctx.state !== 'running') await Promise.race([this.ctx.resume?.(), wait(150)]);
+      if (this.ctx.state !== 'running') { await wait(400); return; }
+      const source = this.ctx.createMediaStreamSource(stream);
+      this.analyser = this.ctx.createAnalyser();
+      this.analyser.fftSize = 512;
+      source.connect(this.analyser);
+      const data = new Uint8Array(this.analyser.fftSize);
+      const limit = performance.now() + MIC_WARMUP_MS;
+      while (performance.now() < limit) {
+        this.analyser.getByteTimeDomainData(data);
+        if (data.some((v) => v !== 128)) return;
+        await wait(25);
+      }
+    } catch { /* sin medidor no se puede esperar la señal: se graba igual */ }
+  }
+
   watchLevel() {
     try {
-      this.ctx = new (window.AudioContext || window.webkitAudioContext)();
       // Un contexto suspendido no permite concluir que el alumno guardo silencio.
-      if (this.ctx.state !== 'running') { this.levelKnown = false; return; }
-      const source = this.ctx.createMediaStreamSource(this.stream);
-      const analyser = this.ctx.createAnalyser(); analyser.fftSize = 512; source.connect(analyser);
+      if (!this.ctx || !this.analyser || this.ctx.state !== 'running') { this.levelKnown = false; return; }
+      const analyser = this.analyser;
       const data = new Uint8Array(analyser.fftSize);
       const tick = () => {
         if (!this.active) return;
@@ -281,6 +312,7 @@ export class TurnRecorder {
     this.stream?.getTracks().forEach((t) => t.stop()); this.stream = null;
     if (this.ctx && this.ctx.state !== 'closed') this.ctx.close().catch(() => {});
     this.ctx = null;
+    this.analyser = null;
   }
 
   abort() {

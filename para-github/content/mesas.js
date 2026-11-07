@@ -59,7 +59,8 @@ const CAST = [
 ].map(([name, gender, accent, azure], i) => person(name, gender, accent, azure, i));
 export const CAST_SIZE = CAST.length;
 export const VOICES = new Set(CAST.map((c) => c.voice));
-export const AZURE_VOICES = new Set(CAST.map((c) => c.azure));
+// Sebastián no atiende mesas: es una de las voces para imitar.
+export const AZURE_VOICES = new Set([...CAST.map((c) => c.azure), 'es-VE-SebastianNeural']);
 
 const pick = (rng, list) => list[Math.floor(rng() * list.length)];
 const L = (en, es) => ({ en, es });

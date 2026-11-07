@@ -2,6 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mountSim } from '../public/js/sim.js';
+import { modelVoiceFor } from '../public/js/voz.js';
 import { mountVoiceLab } from '../public/js/voice-lab.js';
 import { speakCustomer, speakDevice, playLocal, stopPlayback, transcribe, TurnRecorder } from '../public/js/audio.js';
 
@@ -38,6 +39,46 @@ function browser(t, extra = {}) {
   t.after(() => { for (const cleanup of cleanups) cleanup(); stopPlayback(); for (const [name, descriptor] of saved.reverse()) { if (descriptor) Object.defineProperty(globalThis, name, descriptor); else delete globalThis[name]; } });
   return {spoken,audios,revoked,window,listeners,cleanups,get recorder() { return recorder; }};
 }
+
+test('no se graba ni se avisa hasta que el microfono entrega sonido real', async (t) => {
+  let flowing = false; let constraints;
+  class Ctx {
+    state = 'running';
+    createMediaStreamSource() { return { connect() {} }; }
+    createAnalyser() { return { getByteTimeDomainData: (d) => d.fill(flowing ? 130 : 128) }; }
+    close() { return Promise.resolve(); }
+  }
+  const b = browser(t, { AudioContext: Ctx });
+  navigator.mediaDevices.getUserMedia = async (c) => { constraints = c; return { getTracks: () => [] }; };
+  const r = new TurnRecorder();
+  const start = r.start();
+  await new Promise((ok) => setTimeout(ok, 80));
+  assert.equal(b.recorder, undefined, 'el microfono abierto todavia no escucha');
+  assert.equal(r.active, false);
+  flowing = true;
+  await start;
+  assert.equal(b.recorder.state, 'recording');
+  assert.equal(r.active, true);
+  assert.equal(constraints.audio.noiseSuppression, false, 'el filtro de ruido recorta el inicio');
+  r.abort();
+});
+
+test('si el microfono nunca entrega sonido, se graba igual tras la espera maxima', async (t) => {
+  class Ctx { state = 'running'; createMediaStreamSource() { return { connect() {} }; } createAnalyser() { return { getByteTimeDomainData: (d) => d.fill(128) }; } close() { return Promise.resolve(); } }
+  const b = browser(t, { AudioContext: Ctx });
+  const r = new TurnRecorder();
+  await r.start();
+  assert.equal(b.recorder.state, 'recording');
+  r.abort();
+});
+
+test('la voz modelo alterna entre frases y no cambia al repetir la misma', () => {
+  const a = modelVoiceFor('Frase uno.'); const b = modelVoiceFor('Frase dos.'); const c = modelVoiceFor('Frase tres.');
+  assert.notEqual(a.azure, b.azure);
+  assert.equal(a.azure, c.azure);
+  assert.equal(modelVoiceFor('Frase uno.').azure, a.azure, 'repetir conserva la voz');
+  assert.deepEqual([a.azure, b.azure].map((x) => x.slice(0, 5)).sort(), ['es-MX', 'es-VE']);
+});
 
 test('cancelar descarga de voz impide que una respuesta tardia empiece a hablar', async (t) => {
   const b=browser(t);let done;

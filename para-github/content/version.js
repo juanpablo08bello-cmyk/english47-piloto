@@ -1,2 +1,2 @@
 // Cambia al publicar contenido o codigo nuevo.
-export const APP_VERSION = '0.5.2-piloto';
+export const APP_VERSION = '0.5.3-piloto';

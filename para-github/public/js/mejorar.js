@@ -3,7 +3,7 @@
 import { api, esc, icons, playSfx } from './core.js';
 import { capybara } from './capybara.js';
 import { stopPlayback } from './audio.js';
-import { bindWords, micProblem, mountMic, pronNote, resultActions, resultHtml, say, showAudioBlocked } from './voz.js';
+import { bindWords, micProblem, mountMic, pronNote, resultActions, resultHtml, sayModel, showAudioBlocked } from './voz.js';
 
 export async function viewMejorar(ctx) {
   const data = await api('GET', '/api/mejorar');
@@ -64,10 +64,10 @@ export async function viewMejorarJugar(ctx, mode) {
       <div id="micbox"></div>
       <div id="result"></div>`;
     const blocked = (err) => { if (err?.name === 'NotAllowedError') showAudioBlocked(main, main.querySelector('#play'), 'Toca Escuchar para oír la frase.'); };
-    main.querySelector('#play').addEventListener('click', () => say(item.en, voice).catch(blocked));
-    main.querySelector('#slow').addEventListener('click', () => say(item.en, voice, { slow: true }).catch(() => {}));
+    main.querySelector('#play').addEventListener('click', () => sayModel(item.en, voice).catch(blocked));
+    main.querySelector('#slow').addEventListener('click', () => sayModel(item.en, voice, { slow: true }).catch(() => {}));
     mic = mountMic(main.querySelector('#micbox'), { voice, onResult: (r) => heard(item, r), assessQuery: { tipo: 'mejorar', id: 0, index } });
-    say(item.en, voice).catch(blocked);
+    sayModel(item.en, voice).catch(blocked);
     window.scrollTo(0, 0);
   };
 

@@ -3,11 +3,12 @@
 import { api, esc, icons, toast } from './core.js';
 import { capybara } from './capybara.js';
 import { deviceVoiceAvailable, playLocal, speakCustomer, stopPlayback, transcribe, TurnRecorder } from './audio.js';
+import { modelVoiceFor } from './voz.js';
 
 const STATE_LABEL = {
   idle: 'Toca para hablar',
-  permission: 'Pidiendo permiso del micrófono…',
-  recording: 'Micrófono activo. Toca para terminar y revisar',
+  permission: 'Preparando micrófono…',
+  recording: 'Habla ahora',
   sending: 'Enviando…',
   processing: 'Procesando…',
   playing: 'Reproduciendo al cliente…',
@@ -72,12 +73,12 @@ export function mountSim(root, { simId, voice, onFinished, onExit }) {
     box.innerHTML = state === 'error' ? esc(errorMessage) : `${spin}${dot}${STATE_LABEL[state]}${seconds}`;
   }
 
-  async function play(text, slow = false) {
+  async function play(text, slow = false, persona = null) {
     if (destroyed || state === 'recording') return;
     const id = ++playId;
     setState('playing');
     try {
-      const played = await speakCustomer(text, { slow, useServer: useServerVoice(), onFallback: () => {
+      const played = await speakCustomer(text, { slow, persona, useServer: useServerVoice(), onFallback: () => {
         if (!destroyed && id === playId) toast('La voz no respondió. Usamos la de tu dispositivo.');
       } });
       if (!played && !destroyed && id === playId && state === 'playing') toast('No se pudo escuchar. Toca Escuchar otra vez o muestra el texto.');
@@ -288,7 +289,7 @@ export function mountSim(root, { simId, voice, onFinished, onExit }) {
     on('[data-mic]', toggleMic);
     on('[data-stop-audio]', stopAudio);
     on('[data-demo-option]', (e) => submitText(e.currentTarget.dataset.demoOption, 'text'));
-    on('[data-say-option]', (e) => play(e.currentTarget.dataset.sayOption));
+    on('[data-say-option]', (e) => play(e.currentTarget.dataset.sayOption, false, modelVoiceFor(e.currentTarget.dataset.sayOption)));
     on('[data-play-own]', () => { const clip = pendingClip ?? demoRecording; if (clip) playLocal(clip.blob).catch(() => toast('No se pudo reproducir.')); });
     on('[data-discard]', () => { demoRecording = null; pickOnly = false; render(); });
     on('[data-confirm-yes]', () => { if (pending) submitText(pending, 'audio'); });

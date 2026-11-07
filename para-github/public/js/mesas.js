@@ -3,7 +3,7 @@
 import { api, confetti, esc, icons, playSfx, reportIssue, statIcons } from './core.js';
 import { capybara } from './capybara.js';
 import { preloadSpeech, stopPlayback } from './audio.js';
-import { bindWords, micProblem, mountMic, pronNote, resultActions, resultHtml, say, showAudioBlocked, starsHtml } from './voz.js';
+import { bindWords, micProblem, mountMic, pronNote, resultActions, resultHtml, say, sayModel, showAudioBlocked, starsHtml } from './voz.js';
 
 const HUES = ['coral', 'lilac', 'mint', 'pink'];
 const hueOf = (name) => HUES[[...name].reduce((n, ch) => n + ch.charCodeAt(0), 0) % HUES.length];
@@ -147,7 +147,7 @@ export async function viewMesaAtender(ctx) {
   const paintCard = (step) => {
     const card = main.querySelector('#card');
     card.innerHTML = turnCard(step, mesa.level, revealed);
-    card.querySelector('#model')?.addEventListener('click', () => say(step.say.en, voice).catch(() => {}));
+    card.querySelector('#model')?.addEventListener('click', () => sayModel(step.say.en, voice).catch(() => {}));
     card.querySelector('#reveal')?.addEventListener('click', () => {
       const help = HELP[mesa.level] ?? HELP[1];
       const next = help.ladder.find((x) => ![...help.shown, ...revealed].includes(x));

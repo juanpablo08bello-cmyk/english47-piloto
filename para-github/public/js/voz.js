@@ -25,7 +25,7 @@ export function showAudioBlocked(root, button, message = 'Toca el altavoz para o
 /** Una palabra por mejorar se puede tocar para oírla despacio. */
 export function bindWords(box, voice) {
   box.querySelectorAll('[data-word]').forEach((b) => b.addEventListener('click', () => {
-    say(b.dataset.word, voice, { slow: true }).catch(() => {});
+    sayModel(b.dataset.word, voice, { slow: true }).catch(() => {});
   }));
 }
 
@@ -41,7 +41,22 @@ export const micProblem = () => {
   return s.ok ? null : (MIC_HELP[s.code] ?? s.message);
 };
 
+// Voces para imitar: hombres latinos, para que el modelo se sienta cercano y no fuerce el acento.
+const MODEL_VOICES = [
+  { azure: 'es-MX-JorgeMultilingualNeural', voice: 'Orus', accent: 'latino', mood: 'friendly' },
+  { azure: 'es-VE-SebastianNeural', voice: 'Orus', accent: 'latino', mood: 'friendly' },
+];
+const modelAssigned = new Map();
+
+/** Cada frase nueva cambia de voz; la misma frase conserva la suya para imitar un solo modelo. */
+export function modelVoiceFor(text) {
+  if (!modelAssigned.has(text)) modelAssigned.set(text, MODEL_VOICES[modelAssigned.size % MODEL_VOICES.length]);
+  return modelAssigned.get(text);
+}
+
 /** Reproduce una línea. La voz del servidor se usa si existe; si falla, la del dispositivo. */
+export const sayModel = (text, voice, options = {}) => say(text, voice, { ...options, persona: modelVoiceFor(text) });
+
 export function say(text, voice, { persona = null, slow = false, onFallback } = {}) {
   return speakCustomer(text, { slow, persona, onFallback, useServer: Boolean(voice?.capabilities?.speech?.available) });
 }
@@ -62,10 +77,10 @@ export function mountMic(root, { voice, onResult, label = 'Toca y habla', assess
   const paint = (status, html = '') => {
     if (aborted) return;
     root.innerHTML = `<div class="mic-wrap">
-      <button class="mic mic-${status}" id="mic" aria-label="${status === 'recording' ? 'Terminar de hablar' : 'Hablar'}" ${status === 'sending' ? 'disabled' : ''}>
-        ${status === 'recording' ? icons.stop : status === 'sending' ? '<span class="spinner"></span>' : MIC_ICON}
+      <button class="mic mic-${status}" id="mic" aria-label="${status === 'recording' ? 'Terminar de hablar' : 'Hablar'}" ${status === 'sending' || status === 'starting' ? 'disabled' : ''}>
+        ${status === 'recording' ? icons.stop : status === 'sending' || status === 'starting' ? '<span class="spinner"></span>' : MIC_ICON}
       </button>
-      <p class="mic-label" role="status">${esc(status === 'recording' ? 'Te escucho…' : status === 'sending' ? 'Revisando…' : label)}</p>
+      <p class="mic-label" role="status">${esc(status === 'recording' ? 'Habla ahora' : status === 'starting' ? 'Preparando micrófono…' : status === 'sending' ? 'Revisando…' : label)}</p>
       ${html}
     </div>`;
     root.querySelector('#mic').addEventListener('click', toggle);
@@ -100,6 +115,7 @@ export function mountMic(root, { voice, onResult, label = 'Toca y habla', assess
   }
 
   async function toggle() {
+    if (recorder && !recorder.active) return; // el micrófono se está abriendo
     stopPlayback();
     if (recorder?.active) {
       const current = recorder;
@@ -120,9 +136,13 @@ export function mountMic(root, { voice, onResult, label = 'Toca y habla', assess
       onAutoStop: () => { if (recorder?.active) toggle(); },
       onLevel: (level) => root.querySelector('#mic')?.style.setProperty('--level', level.toFixed(2)),
     });
-    paint('recording');
+    const starting = recorder;
+    paint('starting');
     try {
-      await recorder.start();
+      await starting.start();
+      if (aborted || recorder !== starting) return;
+      paint('recording');
+      navigator.vibrate?.(30);
     } catch (err) {
       recorder = null;
       if (err instanceof ApiError && err.code === 'cancelled') return;
