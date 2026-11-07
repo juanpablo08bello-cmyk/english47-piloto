@@ -1,3 +1,4 @@
+import { seasonGift } from '../server/season.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createInvitation } from '../server/auth.js';
@@ -26,7 +27,7 @@ test('cambiar contraseña pide la actual y cierra las otras sesiones', async () 
 test('solo la administración crea una contraseña temporal, y el progreso sigue', async () => {
   const app = await startApp();
   const api = await login(app, 'ana');
-  await api('GET', '/api/aprender');
+  await api('POST', '/api/aprender/generar');
   await api('POST', '/api/aprender/terminar');
   const { xp } = (await api('GET', '/api/today')).data.stats;
   const ana = app.db.prepare("SELECT id FROM users WHERE username='ana'").get();
@@ -75,10 +76,65 @@ test('Hoy y Perfil muestran el nivel y las propinas de las mesas', async () => {
   for (const [index, step] of mesa.steps.entries()) await api('POST', `/api/mesas/${mesa.id}/turno`, { index, heard: step.say.en });
   const end = (await api('POST', `/api/mesas/${mesa.id}/terminar`)).data;
   assert.equal(end.summary.perfect, true);
-  assert.equal(end.summary.tip, mesa.steps.length * 3 + 5, 'tres por turno más el bono');
+  assert.equal(end.summary.tip, mesa.steps.length * 5 + 5, 'cinco por turno más el bono');
   const today = (await api('GET', '/api/today')).data.mesas;
   assert.equal(today.done, 1);
   assert.equal(today.tips, end.summary.tip);
   assert.deepEqual((await api('GET', '/api/profile')).data.mesas, today);
   await app.stop();
+});
+
+test('las cuatro cuentas compiten en el ranking, también la que administra', async () => {
+  const app = await startApp();
+  const alejandro = await login(app, 'alejandro');
+  await login(app, 'francisco');
+  await login(app, 'leonardo');
+  await makeUser(app.db, 'juan08x', app.clockBox.now, 'admin');
+  const juan = (await entrar(app, 'juan08x', 'password123')).api;
+  assert.equal((await alejandro('GET', '/api/ranking')).data.total, 4);
+  for (let i = 0; i < 2; i++) {
+    await juan('POST', '/api/aprender/generar');
+    await juan('POST', '/api/aprender/terminar');
+    const { mesa } = (await juan('POST', '/api/mesas/generar')).data;
+    for (const [index, step] of mesa.steps.entries()) await juan('POST', `/api/mesas/${mesa.id}/turno`, { index, heard: step.say.en });
+    await juan('POST', `/api/mesas/${mesa.id}/terminar`);
+  }
+  for (let i = 0; i < 6; i++) {
+    const { item } = (await juan('POST', '/api/mejorar/generar', { modo: 'escuchar' })).data;
+    await juan('POST', '/api/mejorar/intento', { id: item.id, heard: item.en });
+  }
+  const mine = (await juan('GET', '/api/ranking')).data;
+  assert.deepEqual(mine.me, { streak: 1, tips: 1 });
+  assert.equal(mine.streak[0].value, 1);
+  assert.ok(mine.tips[0].value >= 50);
+  assert.deepEqual(mine.tips.slice(1).map((r) => r.value), [0, 0, 0]);
+  assert.deepEqual((await alejandro('GET', '/api/ranking')).data.me, { streak: 2, tips: 2 }, 'los demás empatan en el segundo puesto');
+  await app.stop();
+});
+
+test('el regalo de 5.000 monedas llega una sola vez a Juan08X, a nadie más, y no toca el ranking', async () => {
+  const app = await startApp();
+  const otro = await login(app, 'francisco');
+  await makeUser(app.db, 'juan08x', app.clockBox.now, 'admin');
+  const juan = (await entrar(app, 'juan08x', 'password123')).api;
+  assert.equal((await juan('GET', '/api/today')).data.stats.coins, 5000);
+  assert.equal((await juan('GET', '/api/profile')).data.stats.coins, 5000, 'no se paga dos veces');
+  assert.equal((await otro('GET', '/api/today')).data.stats.coins, 0);
+  const buy = await juan('POST', '/api/shop/buy', { itemId: 'animal_lion', requestId: 'r' });
+  assert.equal(buy.status, 200);
+  assert.equal(buy.data.stats.coins, 4200, 'gastar no lo vuelve a regalar');
+  assert.equal((await juan('GET', '/api/today')).data.stats.coins, 4200);
+  const rank = (await otro('GET', '/api/ranking')).data;
+  assert.deepEqual(rank.tips.map((r) => r.value), [0, 0]);
+  assert.deepEqual(rank.streak.map((r) => r.value), [0, 0]);
+  assert.equal(rank.total, 2);
+  await app.stop();
+});
+
+test('el regalo reconoce la cuenta por usuario o por nombre, sin importar cómo se escriba', () => {
+  assert.equal(seasonGift({ username: 'juan08x', display_name: 'Juan' }), 5000);
+  assert.equal(seasonGift({ username: 'juanpablo', display_name: 'Juan08X' }), 5000);
+  assert.equal(seasonGift({ username: 'juan.08x', display_name: 'x' }), 5000);
+  assert.equal(seasonGift({ username: 'juan', display_name: 'Juan' }), 0);
+  assert.equal(seasonGift({ username: 'leonardo', display_name: 'Leonardo' }), 0);
 });
