@@ -2,6 +2,7 @@
 // Cada frase: en, es y words: pares [ingles, español] que, juntos y en orden, forman la frase.
 import { FRASES_MAS } from './frases-mas.js';
 import { FRASES_NUEVAS } from './frases-nuevas.js';
+import { FRASES_CUARTA } from './frases-cuarta.js';
 
 const TOPIC_LIST = [
   { id: 'recibir', title: 'Recibir' },
@@ -22,6 +23,7 @@ const TOPIC_LIST = [
   { id: 'familias', title: 'Familias' },
   { id: 'charla', title: 'Charla' },
   { id: 'equipo', title: 'Con compañeros' },
+  { id: 'desayuno', title: 'Desayuno' },
 ];
 
 const f = (topic, id, en, es, ...words) => ({ id, topic, en, es, words });
@@ -117,7 +119,7 @@ const BASE = [
 
 // Las frases salen en orden de temas, de lo más cotidiano a lo más específico.
 const topicOrder = new Map(TOPIC_LIST.map((t, i) => [t.id, i]));
-export const FRASES = [...BASE, ...FRASES_MAS, ...FRASES_NUEVAS].sort((a, b) => topicOrder.get(a.topic) - topicOrder.get(b.topic));
+export const FRASES = [...BASE, ...FRASES_MAS, ...FRASES_NUEVAS, ...FRASES_CUARTA].sort((a, b) => topicOrder.get(a.topic) - topicOrder.get(b.topic));
 export const FRASE_BY_ID = new Map(FRASES.map((x) => [x.id, x]));
 export const TOPICS = TOPIC_LIST;
 export const PACK_SIZE = 4;

@@ -5,6 +5,7 @@ import { localDate } from './dates.js';
 import { award, grantAchievement, readEquipped, RULES, streakStats, validatePracticeDay } from './progress.js';
 import { getSession } from './daily.js';
 import { normalize, tokens, typoKind } from './text.js';
+import { constructionScore, sense, speechTokens } from './construccion.js';
 import { checkLimit, logUsage } from './voice/index.js';
 import { season, seasonKey, seasonStart } from './season.js';
 import { FRASES, FRASE_BY_ID, PACK_SIZE, TOPICS } from '../content/frases.js';
@@ -21,16 +22,47 @@ export const GOALS = { learn: 2, tables: 2, improve: 2 };
 export const MAX_STARS = 5;
 export const TIP_PER_STAR = 2;
 export const PERFECT_BONUS = 5;
-const starsFromRatio = (ratio) => (ratio >= 0.95 ? 5 : ratio >= 0.8 ? 4 : ratio >= 0.6 ? 3 : ratio >= 0.35 ? 2 : ratio >= 0.15 ? 1 : 0);
-const starsFromScore = (score) => (score >= 90 ? 5 : score >= 75 ? 4 : score >= 60 ? 3 : score >= 40 ? 2 : score >= 20 ? 1 : 0);
+// Sin revisión de pronunciación no se puede saber si salió perfecta: así, como mucho, 4 estrellas.
+const starsFromRatio = (ratio) => (ratio >= 0.95 ? 4 : ratio >= 0.8 ? 4 : ratio >= 0.6 ? 3 : ratio >= 0.35 ? 2 : ratio >= 0.15 ? 1 : 0);
+
+/**
+ * Pronunciación (0 a 100) con todo lo que mide Azure: cada sonido, fluidez, entonación y ritmo (prosodia)
+ * y, si leía una frase, que la dijera completa. Una palabra muy mal dicha pone techo aunque el resto salga bien.
+ */
+export function pronunciationScore(a, { scripted }) {
+  const acc = a.accuracy ?? a.score ?? 0;
+  const flu = a.fluency ?? acc;
+  const pros = a.prosody ?? 0;
+  let s = pros > 0 ? 0.5 * acc + 0.2 * flu + 0.3 * pros : 0.7 * acc + 0.3 * flu;
+  if (a.accuracy === undefined) s = a.score ?? 0; // Formato antiguo: solo la nota global.
+  if (scripted && a.completeness !== undefined) s *= 0.4 + 0.6 * (a.completeness / 100);
+  const words = (a.words ?? []).filter((w) => w.error !== 'Insertion' && w.error !== 'Omission');
+  const low = words.length ? Math.min(...words.map((w) => w.accuracy)) : 100;
+  // Sin frase de referencia Azure es más duro con las palabras átonas: el techo se aplica un poco más abajo.
+  const [hard, soft] = scripted ? [40, 60] : [30, 50];
+  if (low < hard) s = Math.min(s, 70);
+  else if (low < soft) s = Math.min(s, 84);
+  if (words.some((w) => w.error === 'Mispronunciation')) s = Math.min(s, 88);
+  return Math.round(Math.max(0, Math.min(100, s)));
+}
+
+/** Estrellas: las 5 piden frase bien armada Y buena pronunciación, no solo un promedio alto. */
+export function starsFor(total, { build, pron, grammar = 0, measured = true, judge = null }) {
+  let stars = total >= 92 ? 5 : total >= 80 ? 4 : total >= 66 ? 3 : total >= 48 ? 2 : total >= 20 ? 1 : 0;
+  if (stars === 5 && (build < 90 || pron < 88 || grammar > 0)) stars = 4;
+  // Escala del jurado: un detalle pequeño (85-94) deja 4; un error claro (<85), 3; dos errores o uno grave (<70), 2.
+  if (judge !== null) stars = Math.min(stars, judge < 70 ? 2 : judge < 85 ? 3 : 5);
+  // Una parte floja no se compensa con la otra: cada una pone su techo.
+  const parts = measured ? [build, pron] : [build];
+  const weakest = Math.min(...parts);
+  if (weakest < 60) stars = Math.min(stars, 2);
+  else if (weakest < 76) stars = Math.min(stars, 3);
+  if (!measured) stars = Math.min(stars, 4);
+  return stars;
+}
 // Parte de los turnos muestran la frase en inglés; en los demás se responde solo, con pista opcional.
 const GUIDED_MESAS = 2;
 const SHOW_ENGLISH = { 1: 0.75, 2: 0.6, 3: 0.45, 4: 0.3 };
-const NUMBER_WORDS = { 1: 'one', 2: 'two', 3: 'three', 4: 'four', 5: 'five', 6: 'six', 7: 'seven', 8: 'eight', 9: 'nine', 10: 'ten' };
-
-function speechTokens(text) {
-  return tokens(normalize(text).replace(/\bokay\b/g, 'ok')).map((w) => NUMBER_WORDS[w] ?? w);
-}
 
 // Consejos breves para hispanohablantes. Son orientación, no un diagnóstico fonético.
 const TIPS = [
@@ -107,47 +139,108 @@ export function assessedResult(target, assessment) {
     }
     return { w: word, ok, accuracy: Math.round(lowest) };
   });
-  const score = assessment.score ?? 0;
-  const stars = starsFromScore(score);
+  // Leyendo la frase, lo que más pesa es la pronunciación; la construcción revisa que no falte ni sobre nada.
+  const pron = pronunciationScore(assessment, { scripted: true });
+  const build = constructionScore(saidText(assessment), [target], { guided: true });
+  const score = Math.round(0.75 * pron + 0.25 * build.score);
+  const stars = (assessment.score ?? 0) < 10 && !words.some((x) => x.ok) ? 0 : starsFor(score, { build: build.score, pron, grammar: 0 });
   const missed = words.filter((x) => !x.ok).sort((a, b) => a.accuracy - b.accuracy);
   const specific = missed.find((x) => x.accuracy > 0 && TIPS.some(([re]) => re.test(normalize(x.w)))) ?? missed[0];
   const tip = !missed.length ? null
     : stars === 0 ? { word: '', text: 'Escucha el ejemplo y repítelo.' }
       : { word: specific.w, text: tipFor(specific.w) };
-  return { words, ratio: score / 100, stars, understood: score >= 60, tip, assessed: true, score: Math.round(score) };
+  return { words, ratio: score / 100, stars, understood: score >= 60, tip, assessed: true, score, parts: { frase: build.score, voz: pron }, issues: build.issues };
+}
+
+/** Lo que dijo, tal cual: el texto sin formato de Azure o, si no viene, sus palabras evaluadas. */
+function saidText(assessment) {
+  // El texto con puntuación permite revisar oración por oración; el léxico queda de respaldo.
+  return assessment.text || assessment.lexical
+    || (assessment.words ?? []).filter((w) => w.error !== 'Insertion' && w.error !== 'Omission').map((w) => w.word).join(' ');
+}
+
+/**
+ * Con juez (Azure OpenAI): su nota pesa 65 % y la de las reglas 35 %. Los errores que explica el juez van primero;
+ * los de las reglas completan. Si cualquiera de los dos ve un error de gramática, no hay 5 estrellas.
+ */
+function withJudge(build, judgment) {
+  if (!judgment) return build;
+  const issues = [...judgment.errors.map((e) => ({ id: 'juez', es: e.es })), ...build.issues.filter((x) => x.id !== 'empty')]
+    .filter((x, i, all) => all.findIndex((o) => o.es === x.es) === i).slice(0, 2);
+  const ruleGrammar = build.issues.filter((x) => !['missing', 'order', 'short', 'no-verb', 'empty'].includes(x.id)).length;
+  return { ...build, score: Math.round(0.65 * judgment.score + 0.35 * build.score), issues, judged: true, judgeErrors: judgment.errors.length, ruleGrammar, corrected: judgment.corrected };
+}
+
+/** Une construcción y pronunciación en una nota de respuesta libre (mitad y mitad). */
+function freeAnswer(text, models, assessment, judgment = null) {
+  const build = withJudge(constructionScore(assessment ? saidText(assessment) || text : text, models), judgment);
+  const grammar = build.judged ? Math.max(build.ruleGrammar, build.judgeErrors)
+    : build.issues.filter((x) => !['missing', 'order', 'short', 'no-verb', 'empty'].includes(x.id)).length;
+  if (!assessment) {
+    return { build, stars: starsFor(build.score, { build: build.score, pron: 0, grammar, measured: false, judge: judgment?.score ?? null }), score: build.score, parts: { frase: build.score } };
+  }
+  const pron = pronunciationScore(assessment, { scripted: false });
+  const score = Math.round(0.5 * pron + 0.5 * build.score);
+  return { build, stars: starsFor(score, { build: build.score, pron, grammar, judge: judgment?.score ?? null }), score, parts: { frase: build.score, voz: pron } };
 }
 
 const isOpenTurn = (step) => step.show === 'free' && Boolean(step.say.alts?.length);
 const CONTENT_STOP = new Set(['a', 'an', 'the', 'i', 'you', 'we', 'it', 'is', 'am', 'are', 'to', 'of', 'for', 'and', 'in', 'on', 'at', 'that', 'this', 'please', 'will', 'can', 'me', 'my', 'your', 'be']);
-// Para revisar por sentido: palabras que en esta conversación significan lo mismo y muletillas que no cuentan.
-const SAME_MEANING = { bathroom: 'restroom', washroom: 'restroom', toilet: 'restroom', bill: 'check', hello: 'hi', hey: 'hi', yeah: 'yes', yep: 'yes', certainly: 'sure', absolutely: 'sure', definitely: 'sure', bring: 'get', grab: 'get', fetch: 'get', apologize: 'sorry', apologies: 'sorry', pardon: 'sorry', second: 'moment', minute: 'moment', menus: 'menu', tables: 'table', drinks: 'drink', beverage: 'drink', thanks: 'thank', meal: 'food', dish: 'food', quickly: 'fast', quick: 'fast', kids: 'children', cook: 'chef', ask: 'check', see: 'check' };
-const FILLERS = new Set(['um', 'uh', 'umm', 'uhh', 'hmm', 'mmm', 'ah', 'eh', 'er', 'oh']);
-const sense = (text) => speechTokens(text).filter((w) => !FILLERS.has(w)).map((w) => SAME_MEANING[w] ?? w);
 const contentWords = (text) => sense(text).filter((w) => !CONTENT_STOP.has(w));
-
-/** Una palabra claramente mal dicha no deja llegar a las 5 estrellas, aunque el promedio sea alto. */
-const fairStars = (score, words) => Math.max(starsFromScore(score) - (words.some((x) => !x.ok) && score < 95 ? 1 : 0), score >= 20 ? 1 : 0);
+const GENERIC = new Set(['tonight', 'today', 'now', 'good', 'great', 'nice', 'ok', 'yes', 'no', 'right', 'time', 'here', 'there', 'sure', 'thank', 'so', 'very', 'really', 'just', 'some', 'all', 'one', 'like']);
+const spokenWords = (assessment, okFrom) => (assessment.words ?? []).filter((w) => w.error !== 'Insertion')
+  .map((w) => ({ w: String(w.word).replace(/^i(?=$|')/, 'I'), ok: w.accuracy >= okFrom, accuracy: Math.round(w.accuracy) }));
 
 /**
- * Turno sin frase a la vista: vale cualquiera de las formas correctas, o decir lo mismo con otras palabras.
- * La revisión es por palabras: orienta, no entiende como una persona. Por eso nunca regaña; muestra el modelo.
+ * Turno sin frase a la vista: vale cualquier frase bien armada que responda a la situación, con sus palabras.
+ * Lo que se califica es CÓMO la arma (orden, piezas, gramática) y cómo la pronuncia; no que repita un modelo.
+ * Si no responde a lo que pide el turno, no se regaña: se muestra una forma de decirlo y no pasa de 2 estrellas.
  */
-export function openTurnResult(step, { heard, assessment }) {
+export function openTurnResult(step, { heard, assessment, judgment = null }) {
   const text = assessment?.text ?? heard ?? '';
   const options = step.say.alts;
   const best = options.map((option) => ({ option, cmp: compareSpeech(option, text) })).sort((a, b) => b.cmp.ratio - a.cmp.ratio)[0];
   const said = new Set(sense(text));
   const overlap = Math.max(...options.map((option) => {
+    // «tonight», «good»… no prueban que hable del tema: no cuentan para parecerse a un modelo.
     const wanted = contentWords(option);
-    return wanted.length ? wanted.filter((w) => said.has(w)).length / wanted.length : 0;
+    return wanted.length ? wanted.filter((w) => said.has(w) && !GENERIC.has(w)).length / wanted.length : 0;
   }));
-  const matched = best.cmp.ratio >= 0.6 || overlap >= 0.6;
-  if (!matched) return { words: [], ratio: best.cmp.ratio, stars: 1, understood: false, tip: null, matched: false, model: step.say.en, heard: text };
-  if (!assessment) return { ...best.cmp, stars: Math.max(best.cmp.stars, 3), understood: true, matched: true, model: best.option };
-  const words = (assessment.words ?? []).filter((w) => w.error !== 'Insertion').map((w) => ({ w: w.word, ok: w.accuracy >= 40, accuracy: Math.round(w.accuracy) }));
-  const score = assessment.score ?? 0;
+  // Responde al tema si usa las palabras de la situación (las del cliente o las de cualquier forma correcta),
+  // aunque arme su propia frase: lo que se califica después es cómo la arma.
+  const topic = new Set([...options, step.guest?.en ?? ''].flatMap(contentWords));
+  // Palabras de relleno («tonight», «yes», «good»…) no prueban que hable del tema.
+  const mine = [...new Set(contentWords(text))].filter((w) => !GENERIC.has(w));
+  const hits = mine.filter((w) => topic.has(w)).length;
+  const close = best.cmp.ratio >= 0.5 || overlap >= 0.5;
+  // El juez entiende el sentido: acepta otras palabras y descarta coincidencias sueltas. Lo muy parecido a un modelo vale siempre.
+  const byWords = hits >= 2 || (hits >= 1 && hits / Math.max(mine.length, 1) >= 0.5);
+  // Si el jurado empata (null), desempatan las palabras de la situación.
+  const matched = close || (judgment && judgment.onTopic !== null ? judgment.onTopic : byWords);
+  const graded = freeAnswer(text, options, assessment, judgment);
+  if (!matched) return { words: [], ratio: best.cmp.ratio, stars: Math.min(graded.stars, 1), understood: false, tip: null, matched: false, model: step.say.en, heard: text, issues: graded.build.issues, judged: Boolean(judgment) };
+  const words = assessment ? spokenWords(assessment, 40) : best.cmp.words;
   const weakest = words.filter((x) => !x.ok).sort((a, b) => a.accuracy - b.accuracy)[0];
-  return { words, ratio: score / 100, stars: fairStars(score, words), understood: score >= 60, tip: weakest ? { word: weakest.w, text: tipFor(weakest.w) } : null, assessed: true, score: Math.round(score), matched: true, model: best.option };
+  return { words, ratio: graded.score / 100, stars: Math.max(graded.stars, 1), understood: graded.score >= 60, tip: weakest ? { word: weakest.w, text: tipFor(weakest.w) } : null, assessed: Boolean(assessment), score: graded.score, parts: graded.parts, issues: graded.build.issues, matched: true, model: graded.build.model ?? best.option, ...betterWay(graded.build, text) };
+}
+
+/** «Mejor así»: la frase del alumno con lo mínimo corregido, solo si el juez la cambió. */
+function betterWay(build, text) {
+  if (!build.judged) return { judged: false };
+  const same = sense(build.corrected).join(' ') === sense(text).join(' ');
+  return { judged: true, corrected: build.corrected && !same ? build.corrected : null };
+}
+
+/** Contexto para el juez: solo turnos donde el alumno arma su propia frase. La lectura guiada no lo necesita. */
+export async function judgeContext(db, user, { tipo, id, index }, now) {
+  const { practice } = (await load(db, user, now)).state;
+  if (tipo === 'mesa') {
+    const step = practice.tables.current?.id === id ? practice.tables.current.steps[index] : null;
+    return step && isOpenTurn(step) ? { guest: step.guest.en, goal: step.say.goal ?? null, models: step.say.alts } : null;
+  }
+  const current = practice.improve.current;
+  if (tipo === 'mejorar' && current?.id === id && current.mode === 'pronunciar') return { guest: current.text ?? null, goal: current.guide ?? null, models: [current.sample] };
+  return null;
 }
 
 /** La frase guía la decide el servidor: el alumno no puede cambiar contra qué se le evalúa. */
@@ -335,6 +428,16 @@ async function practicedVip(db, user) {
 
 export const vipTables = () => ({ tables: VIP_TABLES });
 
+// Frases para «Ordena la frase»: cortas, reales del contenido, y que usan las palabras del tema cuando se puede.
+const ORDERABLE = FRASES.filter((f) => { const n = f.en.split(/\s+/).length; return n >= 4 && n <= 8 && !/[()]/.test(f.en); });
+export function gameSentences(table, chosen, rng = Math.random, size = 2) {
+  const wanted = new Set(chosen.flatMap((r) => tokens(table.kind === 'verbs' ? `${r.present} ${r.past} ${r.third}` : r.en)).filter((w) => !FILLER.has(w) && w.length > 2));
+  const uses = ORDERABLE.filter((f) => tokens(f.en).some((w) => wanted.has(w)));
+  const picked = samplePhrases(uses, size, rng);
+  const rest = samplePhrases(ORDERABLE.filter((f) => !picked.includes(f)), size - picked.length, rng);
+  return [...picked, ...rest].map((f) => ({ en: f.en, es: f.es }));
+}
+
 export async function generateGame(db, user, now, tema, rng = Math.random) {
   const table = VIP_BY_ID.get(tema);
   if (!table) return { error: 'not_found', message: 'Ese tema no existe.' };
@@ -351,6 +454,7 @@ export async function generateGame(db, user, now, tema, rng = Math.random) {
     theme: { id: table.id, title: table.title, kind: table.kind ?? 'words' },
     words: chosen.map((r) => publicRow(table, r)),
     pool: rows.map((r) => publicRow(table, r)),
+    sentences: gameSentences(table, chosen, rng),
   };
 }
 
@@ -498,13 +602,13 @@ function bestAttempt(attempts, index, result) {
   attempts[index] = { stars: Math.max(prev?.stars ?? 0, result.stars), tries: (prev?.tries ?? 0) + 1, selfCheck: result.selfCheck || prev?.selfCheck || false };
 }
 
-export async function mesaTurn(db, user, mesaId, { index, heard, selfCheck, assessment }, now) {
+export async function mesaTurn(db, user, mesaId, { index, heard, selfCheck, assessment, judgment = null }, now) {
   const session = await load(db, user, now);
   const mesa = session.state.practice.tables.current;
   if (!mesa || mesa.id !== mesaId || mesa.finished) return { error: 'not_found', message: 'Esa mesa ya terminó. Genera otra.' };
   const step = mesa.steps[index];
   if (!step) return { error: 'not_found', message: 'Ese turno no existe.' };
-  const result = isOpenTurn(step) && !selfCheck ? openTurnResult(step, { heard, assessment })
+  const result = isOpenTurn(step) && !selfCheck ? openTurnResult(step, { heard, assessment, judgment })
     : assessment ? assessedResult(step.say.en, assessment)
     : selfCheck
       ? { words: step.say.en.split(/\s+/).map((w) => ({ w, ok: true })), ratio: null, stars: 0, understood: true, tip: null, selfCheck: true }
@@ -559,18 +663,19 @@ export function answerFits(heard, need) {
 }
 
 /** Respuesta libre: la pronunciación se mide sobre lo que dijo; el contenido, por palabras clave. */
-export function replyResult(current, { heard, selfCheck, assessment }) {
+export function replyResult(current, { heard, selfCheck, assessment, judgment = null }) {
   const base = { sample: current.sample, samplePron: pronounce(current.sample) };
   if (selfCheck) return { ...base, words: [], ratio: null, stars: 0, understood: true, tip: null, selfCheck: true };
   const text = assessment?.text ?? heard ?? '';
-  const answered = answerFits(text, current.need);
-  if (!assessment) return { ...base, words: [], ratio: null, stars: answered ? MAX_STARS : 2, understood: answered, tip: null, answered, heard: text };
+  const answered = answerFits(text, current.need) || judgment?.onTopic === true;
+  const graded = freeAnswer(text, [current.sample], assessment, judgment);
+  // Si no responde a lo que se pidió, la pronunciación sola no da la propina completa.
+  const stars = answered ? Math.max(graded.stars, 1) : graded.stars >= 4 ? 2 : 1;
+  if (!assessment) return { ...base, words: [], ratio: graded.score / 100, stars, understood: answered, tip: null, answered, heard: text, parts: graded.parts, issues: graded.build.issues };
   // Sin frase de referencia, Azure es más severo con palabras átonas: solo se marca lo claramente flojo.
-  const words = (assessment.words ?? []).filter((w) => w.error !== 'Insertion').map((w) => ({ w: w.word, ok: w.accuracy >= 40, accuracy: Math.round(w.accuracy) }));
-  const score = assessment.score ?? 0;
-  const stars = fairStars(score, words);
+  const words = spokenWords(assessment, 40);
   const weakest = words.filter((x) => !x.ok).sort((a, b) => a.accuracy - b.accuracy)[0];
-  return { ...base, words, ratio: score / 100, stars, understood: score >= 60, tip: weakest ? { word: weakest.w, text: tipFor(weakest.w) } : null, assessed: true, score: Math.round(score), answered, heard: text };
+  return { ...base, words, ratio: graded.score / 100, stars, understood: graded.score >= 60, tip: weakest ? { word: weakest.w, text: tipFor(weakest.w) } : null, assessed: true, score: graded.score, parts: graded.parts, issues: graded.build.issues, answered, heard: text, ...betterWay(graded.build, text) };
 }
 
 export async function improveHome(db, user, now) {
@@ -616,7 +721,7 @@ export async function generateImprove(db, user, mode, now, rng = Math.random) {
     item = { id, mode, en, es, who, pron: pronounce(en), persona };
   } else {
     const reply = buildReply(rng, improve.replies);
-    improve.current = { id, mode: 'pronunciar', sample: reply.sample, need: reply.need };
+    improve.current = { id, mode: 'pronunciar', sample: reply.sample, need: reply.need, text: reply.text, guide: reply.guide };
     improve.replies = [reply.index, ...improve.replies].slice(0, RECENT_REPLIES);
     item = { id, mode: 'pronunciar', kind: reply.kind, text: reply.text, es: reply.es, guide: reply.guide, hint: reply.hint, hintPron: pronounce(reply.hint), persona };
   }
@@ -624,12 +729,12 @@ export async function generateImprove(db, user, mode, now, rng = Math.random) {
   return { item };
 }
 
-export async function improveAttempt(db, user, { id, heard, selfCheck, assessment }, now) {
+export async function improveAttempt(db, user, { id, heard, selfCheck, assessment, judgment = null }, now) {
   const session = await load(db, user, now);
   const { improve } = session.state.practice;
   const current = improve.current;
   if (!current || current.id !== id) return { error: 'not_found', message: 'Eso ya cambió. Genera otro.' };
-  const result = current.mode === 'pronunciar' ? replyResult(current, { heard, selfCheck, assessment })
+  const result = current.mode === 'pronunciar' ? replyResult(current, { heard, selfCheck, assessment, judgment })
     : assessment ? assessedResult(current.en, assessment)
       : selfCheck ? { words: current.en.split(/\s+/).map((w) => ({ w, ok: true })), ratio: null, stars: 0, understood: true, tip: null, selfCheck: true }
         : compareSpeech(current.en, heard);

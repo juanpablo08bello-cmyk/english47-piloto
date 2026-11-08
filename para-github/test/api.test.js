@@ -111,7 +111,7 @@ test('sesion completa: racha, XP y monedas; repetir no duplica nada', async () =
   const a = (await api('GET', '/api/today')).data.stats;
   assert.equal(a.current, 1);
   assert.equal(a.coins, 20);
-  assert.equal(a.xp, 10 + 10 + 20);
+  assert.equal(a.xp, 15 + 15 + 25);
 
   // Peticiones duplicadas y repeticion completa
   await api('POST', '/api/daily/answer', { step: 'review', index: 0, answer: 'x' });
@@ -133,7 +133,7 @@ test('peticiones simultaneas no duplican recompensas', async () => {
   const ex = session.steps.review.exercises;
   await Promise.all(ex.flatMap((e, i) => [0, 1, 2].map(() => api('POST', '/api/daily/answer', { step: 'review', index: i, answer: correctAnswer(e, VOCAB_BY_ID) }))));
   const s = (await api('GET', '/api/today')).data.stats;
-  assert.equal(s.xp, 10);
+  assert.equal(s.xp, 15);
   await app.stop();
 });
 
@@ -299,10 +299,10 @@ test('la leccion paga XP una vez, aunque se repita', async () => {
   };
   const first = await run();
   assert.equal(first.completed, true);
-  assert.equal(first.xp, 10);
+  assert.equal(first.xp, 15);
   const second = await run();
   assert.equal(second.completed, true);
   assert.equal(second.xp, 0);
-  assert.equal(second.stats.xp, 10);
+  assert.equal(second.stats.xp, 15);
   await app.stop();
 });

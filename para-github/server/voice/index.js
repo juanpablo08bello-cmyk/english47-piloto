@@ -3,12 +3,19 @@ import { openAiRealtimeTts } from './realtime.js';
 // Estado real de cada capacidad, limites de uso y registro de consumo.
 import { localDate } from '../dates.js';
 import { anthropicLlm, openAiStt } from './providers.js';
+import { azureJudge, geminiJudge, groqJudge, judgePanel } from './juez.js';
+
+/** Jurado con todo lo configurado: primero lo gratuito; Azure OpenAI solo si alguien lo activó a propósito. */
+const buildJudge = (config) => (config.voiceEnabled
+  ? judgePanel([config.groq && groqJudge(config.groq), config.gemini && geminiJudge(config.gemini), config.azureOpenai && azureJudge(config.azureOpenai)])
+  : null);
 
 export function createVoiceServices(config) {
   if (config.pilotFree) {
     // Modo piloto: toda la voz pasa por Azure. Sin Azure, la app sigue con la voz del dispositivo.
     const azure = config.voiceEnabled && config.azure ? azureSpeech(config.azure) : null;
-    return azure ? { llm: null, ...azure } : { stt: null, tts: null, llm: null, pronunciation: null };
+    const judge = buildJudge(config);
+    return azure ? { llm: null, ...azure, judge } : { stt: null, tts: null, llm: null, pronunciation: null, judge };
   }
   const off = !config.voiceEnabled;
   const stt = !off && config.sttProvider === 'openai' && config.openaiKey
@@ -17,7 +24,8 @@ export function createVoiceServices(config) {
     ? openAiRealtimeTts({ apiKey: config.openaiKey, baseUrl: config.openaiBaseUrl, model: config.ttsModel, voice: config.ttsVoice }) : null;
   const llm = !off && config.llmProvider === 'anthropic' && config.anthropicKey
     ? anthropicLlm({ apiKey: config.anthropicKey, baseUrl: config.anthropicBaseUrl, model: config.llmModel }) : null;
-  return { stt, tts, llm, pronunciation: null };
+  const judge = buildJudge(config);
+  return { stt, tts, llm, pronunciation: null, judge };
 }
 
 export function voiceStatus(services, config) {
@@ -37,6 +45,7 @@ export function voiceStatus(services, config) {
       transcription: { available: Boolean(services.stt), provider: services.stt?.name ?? null },
       customer: { available: Boolean(services.llm), provider: services.llm?.name ?? null },
       speech: { available: Boolean(services.tts), provider: services.tts?.name ?? 'voz del dispositivo' },
+      judge: { available: Boolean(services.judge), provider: services.judge?.name ?? null },
       pronunciation: services.pronunciation
         ? { available: true, provider: services.pronunciation.name }
         : { available: false, provider: null, note: 'Sin servicio de pronunciación conectado: no se evalúa.' },
@@ -81,6 +90,7 @@ export async function usageReport(db, config, nowMs) {
     { key: 'stt', label: 'Transcripción', unit: 'segundos', rate: config.rates.sttPerSecond },
     { key: 'tts', label: 'Voz del cliente', unit: 'caracteres', rate: config.rates.ttsPerChar },
     { key: 'llm', label: 'Cliente y evaluador IA', unit: 'tokens', rate: config.rates.llmPerToken },
+    { key: 'judge', label: 'Juez de frases (Groq, Gemini)', unit: 'tokens', rate: config.rates.judgePerToken },
   ].map(async (r) => {
     const used = await usedThisMonth(db, r.key, nowMs, tz);
     const limit = config.limits[r.key] || null;

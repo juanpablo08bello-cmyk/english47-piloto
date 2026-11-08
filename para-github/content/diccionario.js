@@ -125,6 +125,28 @@ write|ráit|wrote|róut|escribir
 call|col|called|cold|llamar
 learn|lern|learned|lernd|aprender
 work|uérk|worked|uérkt|trabajar
+prepare|pripér|prepared|pripérd|preparar
+heat|jit|heated|jíted|calentar
+mix|mix|mixed|mixt|mezclar
+add|ad|added|áded|añadir, agregar
+slice|sláis|sliced|sláist|rebanar
+melt|melt|melted|mélted|derretir
+include|inclúd|included|inclúded|incluir
+cost|cost|cost|cost|costar
+spend|spend|spent|spent|gastar, pasar tiempo
+find|fáind|found|fáund|encontrar
+keep|kip|kept|kept|guardar, mantener
+send|send|sent|sent|enviar, mandar
+feel|fil|felt|felt|sentir
+hold|jóuld|held|jeld|sostener, esperar en línea
+mean|min|meant|ment|significar, querer decir
+prefer|prifér|preferred|priférd|preferir|d
+deliver|dilíver|delivered|dilíverd|entregar
+reserve|risérv|reserved|risérvd|reservar
+cancel|cáncel|canceled|cánceld|cancelar
+complain|compléin|complained|compléind|quejarse
+replace|ripléis|replaced|ripléist|reemplazar
+hurry|jári|hurried|járid|apurarse
 `.trim().split('\n').map((line) => {
   const [present, presentPron, past, pastPron, es, flag] = line.split('|').map((x) => x.trim());
   const double = flag === 'd';
@@ -648,6 +670,123 @@ Friday|fráidei|viernes
 Saturday|sáterdei|sábado
 Sunday|sándei|domingo
 weekend|uíkend|fin de semana
+`) },
+  { id: 'armar-frases', title: 'Para armar frases', desc: 'Las piezas que unen tus frases. Con ellas dices casi todo.', rows: words(`
+Could you...?|cud yu|¿podría...?
+Can I...?|can ái|¿puedo...?
+May I...?|méi ái|¿me permite...?
+Do you want...?|du yu uánt|¿quiere...?
+Do you need...?|du yu nid|¿necesita...?
+Would you prefer...?|uúd yu prifér|¿prefiere...?
+How about...?|jáu abáut|¿qué tal...?
+Is there anything...?|is der éni zing|¿hay algo...?
+Are you ready...?|ar yu rédi|¿está listo...?
+I will...|ái uíl|yo voy a...
+I can...|ái can|yo puedo...
+I'm sorry, but...|áim sóri bat|lo siento, pero...
+Unfortunately|anfórchunetli|desafortunadamente
+Actually|ákchuali|en realidad
+Of course|of cors|claro, por supuesto
+Sure|shur|claro
+Right away|ráit auéi|enseguida
+because|bicós|porque
+so|sóu|así que, entonces
+but|bat|pero
+or|or|o
+also|ólso|también
+too|tu|también (al final)
+then|den|luego, entonces
+first|ferst|primero
+after that|áfter dat|después de eso
+instead of|instéd of|en vez de
+if you want|if yu uánt|si quiere
+in that case|in dat kéis|en ese caso
+for you|for yu|para usted
+with|uíz|con
+without|uizáut|sin
+on the side|on de sáid|aparte, al lado
+`) },
+  { id: 'quejas', title: 'Problemas y soluciones', desc: 'Cuando algo sale mal: escucha, discúlpate y resuelve.', rows: words(`
+problem|próblem|problema
+mistake|mistéik|error
+complaint|compléint|queja
+wrong order|rong órder|orden equivocada
+It's cold|its cóuld|está frío
+It's too salty|its tu sólti|está muy salado
+It's too spicy|its tu spáisi|está muy picante
+It's overcooked|its overcúkt|está demasiado cocido
+It's undercooked|its andercúkt|le falta cocción
+It's burnt|its bernt|está quemado
+missing|mísing|falta
+long wait|long uéit|espera larga
+I'm so sorry|áim sóu sóri|lo siento mucho
+I apologize|ái apólochais|le pido disculpas
+I understand|ái anderstánd|entiendo
+Thank you for telling me|zank yu for téling mi|gracias por decirme
+Let me take care of it|let mi téik ker of it|déjeme encargarme
+I will fix it right away|ái uíl fix it ráit auéi|lo arreglo enseguida
+I will bring you a new one|ái uíl bring yu a niú uán|le traigo uno nuevo
+I will talk to the manager|ái uíl tok tu de mánacher|voy a hablar con el gerente
+on the house|on de jáus|cortesía de la casa
+refund|rífand|reembolso
+remake|riméik|volver a preparar
+replacement|ripléisment|reemplazo
+It won't happen again|it uónt jápen aguén|no volverá a pasar
+Is everything better now?|is évrizing béter náu|¿todo mejor ahora?
+`) },
+  { id: 'desayuno', title: 'Desayuno y brunch', desc: 'Para los turnos de la mañana.', rows: words(`
+brunch|branch|almuerzo tardío
+scrambled eggs|scrámbold egs|huevos revueltos
+fried eggs|fráid egs|huevos fritos
+sunny side up|sáni sáid ap|huevo estrellado, yema arriba
+over easy|óuver ísi|huevo volteado, yema suave
+poached eggs|póucht egs|huevos pochados
+eggs Benedict|egs bénedict|huevos Benedictinos
+hash browns|jash bráuns|papas ralladas doradas
+French toast|french tóust|pan francés
+oatmeal|óutmil|avena
+granola|granóula|granola con cereal
+yogurt|yóugurt|yogur
+fruit bowl|frut bóul|tazón de fruta
+bagel|béiguel|rosca de pan, bagel
+cream cheese|crim chis|queso crema
+jam|cham|mermelada
+syrup|sírap|jarabe, miel de maple
+whole wheat|jóul uít|integral
+white bread|uáit bred|pan blanco
+avocado toast|avocádo tóust|pan tostado con aguacate
+breakfast sandwich|brékfast sánduich|sándwich de desayuno
+side of fruit|sáid of frut|fruta de acompañante
+refill on coffee|rífil on cófi|más café, rellenar la taza
+decaf|dícaf|descafeinado
+cream and sugar|crim and shúgar|crema y azúcar
+`) },
+  { id: 'servicio', title: 'En el turno', desc: 'Palabras del trabajo en el salón y con tus compañeros.', rows: words(`
+section|sékshon|sección
+shift|shift|turno
+reservation|reservéishon|reservación
+party of four|párti of for|grupo de cuatro
+waitlist|uéitlist|lista de espera
+walk-in|uók in|cliente sin reservación
+table for two|téibol for tu|mesa para dos
+runner|ráner|corredor de platos
+expo|ékspou|el que revisa los platos en la cocina
+behind you|bijáind yu|detrás de ti
+corner|córner|esquina, cuidado al doblar
+hot plate|jot pléit|plato caliente
+coming through|cáming zru|con permiso, voy pasando
+eighty-six|éiti six|se acabó, ya no hay
+on the fly|on de flái|lo más rápido posible
+rush|rash|hora pico
+slammed|slamd|lleno de trabajo
+side work|sáid uérk|tareas de apoyo
+to go|tu góu|para llevar
+takeout|téikaut|comida para llevar
+check on the table|chek on de téibol|pasar a ver la mesa
+clear the table|clir de téibol|levantar la mesa
+reset the table|risét de téibol|volver a poner la mesa
+the kitchen is closed|de quíchen is clóusd|la cocina ya cerró
+last call|last col|última llamada (bar)
 `) },
 ];
 

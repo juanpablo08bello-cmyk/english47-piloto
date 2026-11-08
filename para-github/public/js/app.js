@@ -3,7 +3,7 @@ import { api, ApiError, chime, confetti, esc, icons, newRequestId, plural, setSo
 import { capybara } from './capybara.js';
 import { deviceVoiceAvailable, speakDevice, stopPlayback } from './audio.js';
 import { mountExercises } from './exercise.js';
-import { viewAprender, viewAprenderJugar } from './aprender.js';
+import { viewAprender, viewAprenderJugar, viewTemas } from './aprender.js';
 import { viewMesas, viewMesaAtender } from './mesas.js';
 import { pronNote } from './voz.js';
 import { viewMejorar, viewMejorarJugar } from './mejorar.js';
@@ -43,6 +43,9 @@ const UNIT_NAMES = { 1: 'Recibir y acomodar', 2: 'Bebidas', 3: 'Explicar el men�
 const xpBar = (lv, cls = '') => `<span class="xp-bar ${cls}" role="progressbar" aria-valuenow="${lv.into}" aria-valuemin="0" aria-valuemax="${lv.need}" aria-label="XP para el siguiente nivel"><i style="width:${lv.pct}%"></i></span>`;
 
 /** Lo de arriba a la derecha: racha, nivel con su XP y monedas. Al tocarlo se despliega qué es cada cosa. */
+// La barra de arriba siempre cabe en 320 px: el XP completo está al tocarla y las monedas grandes se abrevian.
+const shortCoins = (n) => (n >= 10000 ? `${(n / 1000).toFixed(n >= 100000 ? 0 : 1).replace('.', ',')}k` : String(n));
+
 function statsBar() {
   const s = state.stats;
   if (!s) return '';
@@ -50,8 +53,8 @@ function statsBar() {
   return `<div class="stats-wrap">
     <button class="stats" type="button" id="stats-toggle" aria-expanded="false" aria-controls="stats-menu" aria-label="Ver tu racha, tu nivel y tus monedas">
       <span class="stat">${statIcons.flame}${s.current}</span>
-      ${lv ? `<span class="stat stat-xp">${statIcons.xp}<span class="stat-xp-body"><span class="stat-xp-label">Nivel ${lv.level} · ${lv.xp} XP</span>${xpBar(lv)}</span></span>` : ''}
-      <span class="stat">${statIcons.coin}${s.coins}</span>
+      ${lv ? `<span class="stat stat-xp">${statIcons.xp}<span class="stat-xp-body"><span class="stat-xp-label">Nivel ${lv.level}</span>${xpBar(lv)}</span></span>` : ''}
+      <span class="stat">${statIcons.coin}${shortCoins(s.coins)}</span>
     </button>
     <div class="stats-menu" id="stats-menu" hidden>
       <div class="stats-line">${statIcons.flame}<div><b>Racha: ${plural(s.current, 'día', 'días')}</b><small>Completa las tres secciones cada día para que suba.</small></div></div>
@@ -477,21 +480,21 @@ async function viewToday() {
 
 /** Una sola vez: cuenta qué cambió, sobre todo que la temporada empezó desde cero. */
 function showWhatsNew(user) {
-  if (guideSeen('novedades-1-2') || overlay.querySelector('.news')) return;
+  if (guideSeen('novedades-1-3') || overlay.querySelector('.news')) return;
   const el = document.createElement('div');
   el.className = 'modal news';
   el.setAttribute('role', 'dialog');
-  el.setAttribute('aria-label', 'ENGLISH47 se actualizó a la versión 1.2');
+  el.setAttribute('aria-label', 'ENGLISH47 se actualizó a la versión 1.3');
   el.innerHTML = `<div class="modal-card news-card">
     ${capybara({ mood: 'celebrate', size: 132 })}
-    <p class="news-kicker">VERSIÓN 1.2</p>
+    <p class="news-kicker">VERSIÓN 1.3</p>
     <h2>¡ENGLISH47 se actualizó!</h2>
     <p class="news-hello">¡Vas muy bien, ${esc(user.displayName)}! Lo mejoramos con lo que nos contaron:</p>
     <ul class="news-list">
-      <li>${icons.plate}<span><b>Mesas como una conversación:</b> nuevos clientes, saludos y situaciones.</span></li>
-      <li>${icons.talk}<span><b>Responde a tu manera:</b> ahora valen varias respuestas correctas.</span></li>
-      <li>${icons.check}<span><b>Más corto y al grano:</b> tu meta es 2, 2 y 2 cada día.</span></li>
-      <li>${icons.book}<span><b>Diccionario VIP y juegos:</b> todas las palabras, y Temas para no olvidarlas.</span></li>
+      <li>${icons.talk}<span><b>Estrellas más justas:</b> cuenta cómo armas la frase y cómo suena. Las 5 se ganan.</span></li>
+      <li>${icons.check}<span><b>Te dice qué corregir:</b> «Falta is», «va I will»… con un ejemplo.</span></li>
+      <li>${statIcons.xp}<span><b>Más XP:</b> subes de nivel más rápido.</span></li>
+      <li>${icons.book}<span><b>Más para practicar:</b> palabras, frases, mesas y dos juegos nuevos.</span></li>
       <li>${statIcons.flame}<span><b>Tu progreso sigue intacto.</b> ¡Sigue subiendo en el Ranking!</span></li>
     </ul>
     <button class="btn btn-primary btn-xl btn-block" id="news-go">¡A jugar!</button>
@@ -499,7 +502,7 @@ function showWhatsNew(user) {
   overlay.append(el);
   confetti();
   try { chime(); } catch { /* el teléfono puede bloquear el sonido hasta tocar */ }
-  el.querySelector('#news-go').addEventListener('click', () => { markGuide('novedades-1-2'); el.remove(); confetti(); });
+  el.querySelector('#news-go').addEventListener('click', () => { markGuide('novedades-1-3'); el.remove(); confetti(); });
 }
 
 function entryCard(v) {
@@ -1002,7 +1005,7 @@ async function viewProfile() {
           </div>
           ${xpBar(lv, 'xp-bar-lg')}
           <p class="level-left"><b>${lv.into} / ${lv.need} XP</b> · faltan ${lv.left} XP para el nivel ${lv.level + 1}</p>
-          <p class="small level-how">${statIcons.xp}El rayo es tu XP. Lo ganas al cumplir cada sección del día: hasta 40 XP diarios.</p>
+          <p class="small level-how">${statIcons.xp}El rayo es tu XP. Lo ganas al cumplir cada sección del día: hasta 55 XP diarios.</p>
         </section>
         <div class="tiles tiles-2">
           <div class="tile tile-streak"><b>${p.stats.current}</b><span>Días de racha</span></div>
@@ -1177,7 +1180,9 @@ const ROUTES = [
   [/^#\/aprender$/, () => viewAprender(ctx)],
   [/^#\/aprender\/jugar(?:\/(\w+))?$/, (topic) => viewAprenderJugar(ctx, topic)],
   [/^#\/aprender\/vip$/, () => viewVip(ctx)],
-  [/^#\/aprender\/tema\/(\w+)$/, (tema) => viewJuego(ctx, tema)],
+  [/^#\/aprender\/temas$/, () => viewTemas(ctx)],
+  // Con guion: «armar-frases».
+  [/^#\/aprender\/tema\/([\w-]+)$/, (tema) => viewJuego(ctx, tema)],
   [/^#\/mesas$/, () => viewMesas(ctx)],
   [/^#\/mesas\/atender$/, () => viewMesaAtender(ctx)],
   [/^#\/mejorar$/, () => viewMejorar(ctx)],

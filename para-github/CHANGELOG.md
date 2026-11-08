@@ -1,5 +1,30 @@
 # Registro de cambios
 
+## 1.3.0
+
+- Rediseño y repaso de todas las secciones:
+  - Aprender palabras: **Temas** pasa a ser una pestaña de colores (arriba del Diccionario VIP) con su propia página y su avance; el juego vuelve a esa página.
+  - Arreglo: los temas con guion (Para armar frases) no abrían su juego.
+  - Barra de arriba: siempre cabe en 320 px (el XP completo se ve al tocarla; las monedas grandes se abrevian, 12,3k).
+  - Ranking: sin podio de «1, 1, 1» cuando nadie ha sumado; mensaje para ser el primero. Los empates se ven bien en el podio.
+  - Pulido general: botones con profundidad, opciones de juego con borde, tarjetas de resultado definidas y avisos más cortos.
+
+- Jurado GRATIS para revisar frases: Groq (gpt-oss-120b, JSON estricto) y Google Gemini (3.5 Flash-Lite; los 2.5 ya no se dan a cuentas nuevas) califican a la vez y se promedia; si uno falla o llega a su límite gratuito, decide el otro; si caen los dos, deciden las reglas. Sin tarjeta. Escala: error claro (<85) máx. 3★, dos errores (<70) máx. 2★. Si empatan en si cumple la consigna, desempatan las reglas; con promedio ≥ 90 un solo juez exigente no marca errores. Claves: `GROQ_API_KEY`, `GEMINI_API_KEY`. Calibración: `node data/calibrar-jueces.mjs`.
+- Juez de frases con Azure OpenAI (Microsoft Foundry), opcional y de pago; lo que Microsoft recomienda desde que retiró la evaluación de gramática de Pronunciation Assessment (`server/voice/juez.js`).
+  - Solo en respuestas libres (Mesas con tus palabras y Pronunciar); la lectura guiada no lo usa. Solo recibe texto, nunca audio.
+  - Su nota pesa 65 % de «Frase» y las reglas 35 %; si cualquiera de los dos ve un error, no hay 5 estrellas. Entiende otras palabras con el mismo sentido y muestra «Mejor así:» con la frase del alumno corregida.
+  - Opcional: sin `AZURE_OPENAI_*` todo sigue con las reglas. Si falla, tarda más de 7 s o se acaba el tope mensual (`LIMIT_JUDGE_TOKENS_MONTH`), también.
+
+- Corrección nueva y más justa: cada respuesta tiene dos notas, **Frase** (cómo está armada) y **Voz** (pronunciación).
+  - La frase se revisa con reglas propias (`server/construccion.js`): orden, piezas que faltan y unos 25 errores típicos de quien habla español (I am agree, what you want, can to, he have, I no have, I bring → I will bring, here your check, artículos, comparativos...). Cada error se explica con un ejemplo.
+  - La voz usa todo lo que mide Azure: precisión, fluidez, prosodia (entonación y ritmo, activada en esta versión) y, al leer, que la frase esté completa. Una palabra que casi no se entiende pone techo.
+  - Las 5 estrellas piden frase bien armada **y** buena voz; una parte floja no se compensa con la otra. Sin revisión de voz (solo texto) el máximo es 4.
+  - En los turnos libres vale cualquier frase propia bien armada que responda al cliente; ya no hace falta parecerse a un modelo.
+- Más XP: un día completo da 55 XP (antes 40) y los niveles cuestan menos (250 y +80 por nivel).
+- Diccionario VIP: 4 tablas nuevas (Para armar frases, Problemas y soluciones, Desayuno y brunch, En el turno) y 22 verbos más.
+- Juegos de Temas: dos rondas nuevas, «Ordena la frase» y «Escucha y elige».
+- 49 frases nuevas (tema nuevo: Desayuno), 3 mesas nuevas (Desayuno, Happy hour, No es el término que pidió) y 10 situaciones nuevas en Pronunciar.
+
 ## 1.2.0
 
 - Diccionario VIP dentro de Aprender palabras: tablas largas por tema, con buscador, cómo suena, y verbos en presente, pasado, futuro y -ing. Se toca una palabra para oírla.

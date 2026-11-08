@@ -10,8 +10,17 @@ const FREE_AZURE_LIMITS = { stt: 18000, tts: 500000 }; // Plan gratuito F0: 5 h 
 export function loadConfig(env = process.env) {
   const azure = env.AZURE_SPEECH_KEY && env.AZURE_SPEECH_REGION
     ? { apiKey: env.AZURE_SPEECH_KEY, region: env.AZURE_SPEECH_REGION.trim().toLowerCase() } : null;
+  // Juez de construcción (Azure OpenAI / Microsoft Foundry). Opcional: sin esto se usan solo las reglas.
+  const azureOpenai = env.AZURE_OPENAI_ENDPOINT && env.AZURE_OPENAI_KEY && env.AZURE_OPENAI_DEPLOYMENT
+    ? { endpoint: env.AZURE_OPENAI_ENDPOINT.trim(), apiKey: env.AZURE_OPENAI_KEY, deployment: env.AZURE_OPENAI_DEPLOYMENT.trim(), reasoning: env.AZURE_OPENAI_REASONING || null } : null;
+  // Jueces GRATUITOS (sin tarjeta): Groq y Google Gemini. Con los dos, califican juntos como jurado.
+  const groq = env.GROQ_API_KEY ? { apiKey: env.GROQ_API_KEY, model: env.GROQ_MODEL || 'openai/gpt-oss-120b' } : null;
+  const gemini = env.GEMINI_API_KEY ? { apiKey: env.GEMINI_API_KEY, model: env.GEMINI_MODEL || 'gemini-3.5-flash-lite' } : null;
   return {
     azure,
+    azureOpenai,
+    groq,
+    gemini,
     port: num(env.PORT, 4747),
     host: env.HOST || '0.0.0.0',
     storage: env.DATABASE_URL || env.STORAGE_DRIVER === 'postgres' || env.PILOT_FREE === 'true' || env.RENDER === 'true' ? 'postgres' : 'sqlite',
@@ -35,6 +44,8 @@ export function loadConfig(env = process.env) {
       stt: num(env.LIMIT_STT_SECONDS_MONTH, azure ? FREE_AZURE_LIMITS.stt : 36000),
       tts: num(env.LIMIT_TTS_CHARS_MONTH, azure ? FREE_AZURE_LIMITS.tts : 600000),
       llm: num(env.LIMIT_LLM_TOKENS_MONTH, 3000000),
+      // Juez: unos 900 tokens por respuesta. 1,5 M al mes ≈ 1.600 respuestas y menos de 1 dólar con un modelo mini.
+      judge: num(env.LIMIT_JUDGE_TOKENS_MONTH, azureOpenai ? 1500000 : 4000000),
       sttPerUserDay: num(env.LIMIT_STT_SECONDS_USER_DAY, 900),
     },
     alertAt: num(env.USAGE_ALERT_AT, 0.8),
@@ -43,6 +54,7 @@ export function loadConfig(env = process.env) {
       sttPerSecond: num(env.RATE_STT_PER_SECOND, null),
       ttsPerChar: null, // Realtime factura tokens; la tarifa heredada por carácter no aplica.
       llmPerToken: num(env.RATE_LLM_PER_TOKEN, null),
+      judgePerToken: num(env.RATE_JUDGE_PER_TOKEN, null),
     },
   };
 }

@@ -311,6 +311,26 @@ function confirmSay(c) {
   return R(`Confirma el pedido: ${es}.`,
     [`Let me confirm. One ${en}.`, `Déjeme confirmar. ${cap(es)}.`], [`Okay, so one ${en}.`, `Bien, entonces ${es}.`], [`Perfect. That is one ${en}.`, `Perfecto. Es ${es}.`])(c.rng);
 }
+// Respuestas de las situaciones nuevas (1.3).
+Object.assign(SAY, {
+  eggsHow: R('Pregunta cómo quiere sus huevos.',
+    ['How would you like your eggs?', '¿Cómo quiere sus huevos?'], ['Sure. How do you want your eggs?', 'Claro. ¿Cómo quiere sus huevos?'], ['Of course. And how would you like the eggs?', 'Claro. ¿Y cómo quiere los huevos?']),
+  toastWhich: R('Pregunta si quiere pan blanco o integral.',
+    ['White or whole wheat toast?', '¿Pan blanco o integral?'], ['Would you like white or whole wheat?', '¿Lo quiere blanco o integral?'], ['Got it. White or whole wheat?', 'Entendido. ¿Blanco o integral?']),
+  coffeeRefill: R('Ofrece más café.',
+    ['Can I get you more coffee?', '¿Le traigo más café?'], ['Would you like more coffee?', '¿Quiere más café?'], ['Let me get you a refill.', 'Le traigo más.']),
+  happyHourInfo: R('Di que sí: las bebidas están en oferta hasta las siete.',
+    ['Yes! Drinks are half price until seven.', '¡Sí! Las bebidas están a mitad de precio hasta las siete.'], ['Yes, we have drink specials until seven.', 'Sí, tenemos bebidas en oferta hasta las siete.']),
+  happyHourFood: R('Recomienda las alitas o los tacos, que están en oferta.',
+    ['The wings are on special. They are really good.', 'Las alitas están en oferta. Son muy buenas.'], ['I recommend the tacos. They are on special too.', 'Le recomiendo los tacos. También están en oferta.']),
+  overcookedSorry: R('Discúlpate y ofrece uno nuevo.',
+    ['I am so sorry. Let me ask the kitchen for a new one.', 'Lo siento mucho. Le pido uno nuevo a la cocina.'], ['I apologize. Let me get you a new steak.', 'Le pido disculpas. Le traigo otro filete.'], ['Sorry about that. I will have the chef cook a new one.', 'Perdón por eso. Le pido al chef que cocine uno nuevo.']),
+  howCooked: R('Pregunta cómo lo quiere esta vez.',
+    ['How would you like it cooked this time?', '¿Cómo lo quiere esta vez?'], ['Of course. How would you like it?', 'Claro. ¿Cómo lo quiere?']),
+  whileWait: R('Ofrece traer algo mientras espera.',
+    ['Can I bring you something while you wait?', '¿Le traigo algo mientras espera?'], ['Would you like some bread while you wait?', '¿Quiere pan mientras espera?']),
+});
+
 const ALL_SET = (c) => G(c.rng, ['No, that is all for now.', 'No, eso es todo por ahora.'], ['That is everything, thank you.', 'Eso es todo, gracias.'], ['I think we are good.', 'Creo que estamos bien.'], ['Nope, that is it.', 'No, eso es todo.'], ['No, thanks. I am good.', 'No, gracias. Estoy bien.']);
 
 const T = {
@@ -441,6 +461,12 @@ const SCENES = [
     (c) => step('name', G(c.rng, ['Okay. I can wait here.', 'Bien. Puedo esperar aquí.'], ['Great, I will wait.', 'Muy bien, espero.']), SAY.whatName(c.rng), [], LINKED),
     opt((c) => step('give', G(c.rng, [`It is ${c.guestName}. Is it ready?`, `Es ${c.guestName}. ¿Ya está?`], [`${c.guestName}. Thank you.`, `${c.guestName}. Gracias.`]), SAY.orderReady(c.rng), [], LINKED)),
   ] },
+  { id: 'desayuno', es: 'Desayuno', level: 1, plan: () => [
+    (c) => step('order', G(c.rng, ['Good morning! Can I get two eggs and toast?', '¡Buenos días! ¿Me da dos huevos y pan tostado?'], ['Hi! I want the breakfast special, please.', '¡Hola! Quiero el desayuno especial, por favor.']), SAY.eggsHow(c.rng)),
+    (c) => step('eggs', G(c.rng, ['Scrambled, please.', 'Revueltos, por favor.'], ['Over easy, please.', 'Volteados, por favor.'], ['Sunny side up, please.', 'Estrellados, por favor.']), SAY.toastWhich(c.rng), [], LINKED),
+    (c) => step('toast', G(c.rng, ['Whole wheat, please. And a coffee.', 'Integral, por favor. Y un café.'], ['White is fine. Can I get a coffee too?', 'Blanco está bien. ¿Me trae un café también?']), SAY.milkSugar(c.rng), [], LINKED),
+    opt((c) => step('refill', G(c.rng, ['This coffee is so good.', 'Este café está muy bueno.'], ['I finished my coffee already.', 'Ya me terminé el café.']), SAY.coffeeRefill(c.rng))),
+  ] },
   { id: 'regular', es: 'Clientes de siempre', level: 1, plan: () => [
     (c) => step('greet', G(c.rng, ['Hi! We are back!', '¡Hola! ¡Volvimos!'], ['Hello again! Remember us?', '¡Hola otra vez! ¿Se acuerda de nosotros?'], ['Hi there! We loved it last time.', '¡Hola! Nos encantó la última vez.']), SAY.welcomeBack(c.rng)),
     (c) => step('thanks', G(c.rng, ['Thanks! It is good to be back.', '¡Gracias! Qué bueno volver.'], ['Thank you! We love this place.', '¡Gracias! Nos encanta este lugar.']), SAY.sameAgain(c.rng), [], LINKED),
@@ -505,6 +531,12 @@ const SCENES = [
     (c) => step('start', G(c.rng, [`Thanks! Can we start with the ${c.starter.en}?`, `¡Gracias! ¿Empezamos con ${c.starter.es}?`], [`And the ${c.starter.en} first, please.`, `Y primero ${c.starter.es}, por favor.`]), SAY.anythingElse(c.rng), [], LINKED),
     (c) => step('close', ALL_SET(c), SAY.putIn(c.rng), [], LINKED),
   ] },
+  { id: 'happy_hour', es: 'Happy hour', level: 2, plan: () => [
+    (c) => step('ask', G(c.rng, ['Hi! Is it still happy hour?', '¡Hola! ¿Todavía es happy hour?'], ['Do you have happy hour today?', '¿Tienen happy hour hoy?']), SAY.happyHourInfo(c.rng)),
+    (c) => step('food', G(c.rng, ['Nice! What food do you recommend?', '¡Qué bien! ¿Qué comida recomienda?'], ['And is there any food on special?', '¿Y hay comida en oferta?']), SAY.happyHourFood(c.rng), [], LINKED),
+    (c) => step('order', G(c.rng, [`Okay, the wings and a ${c.alcohol.en}, please.`, `Bien, las alitas y ${c.alcohol.es}, por favor.`], [`Great. Tacos and a ${c.alcohol.en}.`, `Genial. Tacos y ${c.alcohol.es}.`]), SAY.askId(c.rng), [], LINKED),
+    opt((c) => step('id', G(c.rng, ['Sure, here you go.', 'Claro, aquí tiene.'], ['Yes, here it is.', 'Sí, aquí está.']), SAY.thanksBack(c.rng), [], LINKED)),
+  ] },
   { id: 'olvido', es: 'Se olvidó su bebida', level: 2, tense: true, plan: () => [
     (c) => step('problem', G(c.rng, ['Excuse me, I never got my drink.', 'Disculpe, nunca llegó mi bebida.'], ['Hi, I think you forgot my drink.', 'Hola, creo que olvidó mi bebida.']), SAY.sorry(c.rng)),
     (c) => step('what', G(c.rng, [`It was ${c.drink.en}.`, `Era ${c.drink.es}.`], [`I ordered ${c.drink.en}.`, `Pedí ${c.drink.es}.`]), SAY.drinkComing(c.rng), [], LINKED),
@@ -523,6 +555,12 @@ const SCENES = [
     (c) => step('where', G(c.rng, [`Where is my ${c.main.en}?`, `¿Dónde está ${c.main.es}?`], ['Is it almost ready?', '¿Ya casi está?']), SAY.kitchen(c.rng), [], LINKED),
     (c) => step('late', G(c.rng, ['We need to leave soon.', 'Nos tenemos que ir pronto.'], ['We can not wait much longer.', 'No podemos esperar mucho más.']), SAY.tellKitchen(c.rng), [], LINKED),
     (c) => step('thanks', G(c.rng, ['Okay. Please hurry.', 'Bien. Apúrese, por favor.'], ['Okay. Thanks for checking.', 'Bien. Gracias por revisar.']), SAY.patience(c.rng), [], LINKED),
+  ] },
+  { id: 'mal_cocido', es: 'No es el término que pidió', level: 3, tail: true, tense: true, plan: () => [
+    (c) => step('problem', G(c.rng, ['Excuse me, I asked for medium rare. This is well done.', 'Disculpe, lo pedí medio rojo. Este está bien cocido.'], ['Sorry, my steak is overcooked.', 'Perdón, mi filete está demasiado cocido.']), SAY.overcookedSorry(c.rng)),
+    (c) => step('how', G(c.rng, ['Yes, please. I still want the steak.', 'Sí, por favor. Todavía quiero el filete.'], ['Okay, thank you. Can you fix it?', 'Bien, gracias. ¿Lo puede arreglar?']), SAY.howCooked(c.rng), [], LINKED),
+    (c) => step('cook', G(c.rng, ['Medium rare, please. A little pink.', 'Medio rojo, por favor. Un poco rosado.'], ['Medium rare, like I asked.', 'Medio rojo, como lo pedí.']), SAY.whileWait(c.rng), [], LINKED),
+    opt((c) => step('thanks', G(c.rng, ['No, thank you. I can wait.', 'No, gracias. Puedo esperar.'], ['Some bread would be nice.', 'Un poco de pan estaría bien.']), SAY.patience(c.rng), [], LINKED)),
   ] },
   { id: 'turista', es: 'Turista con dudas', level: 3, plan: () => [
     (c) => step('greet', G(c.rng, ['Hello! We are visiting from far away.', '¡Hola! Venimos de muy lejos.'], ['Hi! We just got to Miami.', '¡Hola! Acabamos de llegar a Miami.']), SAY.miamiWelcome(c.rng)),

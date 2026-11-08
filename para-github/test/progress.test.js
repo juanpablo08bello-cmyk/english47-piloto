@@ -65,7 +65,7 @@ test('completado no es resuelto: equivocarse da esfuerzo, no dominio', async () 
   const wrong = ['The fries are good tonight', 'The fries are good tonight', 'The fries are good tonight'];
   const out = await finishWith(api, 'table_for_two', wrong);
   assert.equal(out.sim.outcome, 'completed');
-  assert.equal(out.rewards.xp, 20);
+  assert.equal(out.rewards.xp, 25);
   assert.ok(out.sim.summary.reinforce.length === 3);
   assert.equal((await api('GET', '/api/route')).data.units[0].challenge.done, false);
   const right = await finishWith(api, 'table_for_two', models('table_for_two'));

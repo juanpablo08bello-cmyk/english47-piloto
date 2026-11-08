@@ -60,6 +60,17 @@ export const SITUATIONS = [
   client('We are ready to order.', 'Estamos listos para ordenar.', 'Pregúntale qué le gustaría.', 'Great', 'Great, what would you like?', [ORDERQ]),
   client('We need a few more minutes.', 'Necesitamos unos minutos más.', 'Dile que se tome su tiempo.', 'Take', 'Take your time.', [['take', 'time', 'problem', 'sure', 'okay', 'ok', 'back']]),
   client('Have a good night!', '¡Que pase buena noche!', 'Despídete y agradece.', 'Thank you', 'Thank you, have a good night!', [BYE]),
+  // Nuevas en 1.3: desayuno, happy hour, término de la carne y momentos del turno.
+  client('Can I get eggs for breakfast?', '¿Me da huevos de desayuno?', 'Dile que sí y pregunta cómo los quiere.', 'Sure', 'Sure, how would you like your eggs?', [YES, ['how', 'eggs', 'scrambled', 'fried', 'like', 'want']]),
+  client('Can I get more coffee, please?', '¿Me trae más café, por favor?', 'Dile que claro, que ya se lo traes.', 'Of course', "Of course, I'll bring more coffee right away.", [YES, BRING]),
+  client('Is it still happy hour?', '¿Todavía es happy hour?', 'Dile que sí, hasta las siete.', 'Yes', 'Yes, happy hour is until seven.', [YES, ['until', 'seven', 'six', 'eight', 'time', 'still']]),
+  client('My steak is overcooked.', 'Mi filete está demasiado cocido.', 'Discúlpate y ofrece uno nuevo.', "I'm so sorry", "I'm so sorry. I will ask the kitchen for a new one.", [SORRY, FIX]),
+  client('Is the fish fresh?', '¿El pescado es fresco?', 'Dile que sí, que llegó hoy.', 'Yes', 'Yes, it is fresh. It came in today.', [YES, ['fresh', 'today', 'morning']]),
+  client('It is my birthday today!', '¡Hoy es mi cumpleaños!', 'Felicítalo con mucho ánimo.', 'Happy birthday', 'Happy birthday! I hope you have a great night.', [['happy', 'birthday', 'congratulations']]),
+  client('Do you have a kids menu?', '¿Tienen menú de niños?', 'Dile que sí y que se lo traes.', 'Yes', 'Yes, I will bring you one.', [YES, ['bring', 'get', 'here', 'menu', 'one']]),
+  client('Can we sit outside?', '¿Podemos sentarnos afuera?', 'Dile que sí y que te sigan.', 'Of course', 'Of course, please follow me to the patio.', [YES, FOLLOW]),
+  client('Is the tip included?', '¿La propina está incluida?', 'Dile que no está incluida.', 'No', 'No, the tip is not included.', [['no', 'not', "isn't"], ['included', 'tip']]),
+  client('What time does the kitchen close?', '¿A qué hora cierra la cocina?', 'Dile que a las diez.', 'At ten', 'The kitchen closes at ten.', [['ten', 'eleven', 'nine', 'midnight', 'close', 'closes']]),
 
   client('Hi! Are you our server?', '¡Hola! ¿Usted es nuestro mesero?', 'Dile que sí y pregunta cómo están.', 'Yes', 'Yes, I am. How are you doing tonight?', [YES, ['how', 'help', 'get', 'welcome']]),
   client('We have been here before. It was great!', 'Ya hemos venido antes. ¡Estuvo muy bien!', 'Alégrate y dales la bienvenida.', 'Welcome', 'Welcome back! So good to see you.', [['welcome', 'good', 'glad', 'great', 'nice', 'thank', 'thanks']]),

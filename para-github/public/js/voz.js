@@ -167,6 +167,13 @@ export const starsHtml = (n) => `<div class="stars" role="img" aria-label="${n} 
 
 const CHEERS = { 5: '¡Excelente!', 4: '¡Muy bien!', 3: '¡Bien!', 2: '¡Vas bien! Otra vez', 1: 'Otra vez, tranquilo', 0: 'Otra vez, tranquilo' };
 
+/** Dos barritas: cómo armaste la frase y cómo sonó. Sin números largos ni explicación. */
+const partsHtml = (parts) => {
+  if (!parts) return '';
+  const bar = (label, value, cls) => (value === undefined ? '' : `<div class="part ${cls}"><span>${label}</span><i><b style="width:${Math.max(4, Math.min(100, value))}%"></b></i></div>`);
+  return `<div class="parts">${bar('Frase', parts.frase, 'part-build')}${bar('Voz', parts.voz, 'part-voice')}</div>`;
+};
+
 /** Resultado de la frase guía: palabras en verde o por mejorar, sin juzgar el acento. */
 export function resultHtml(r, heard = '', extra = '', { compare = false, title = null } = {}) {
   // Sin haber visto la frase, otras palabras también pueden estar bien: no se castiga, se muestra el modelo.
@@ -175,6 +182,9 @@ export function resultHtml(r, heard = '', extra = '', { compare = false, title =
   return `<div class="result">
     ${starsHtml(r.stars)}
     <p class="result-title">${esc(title ?? CHEERS[r.stars])}</p>
+    ${partsHtml(r.parts)}
+    ${r.issues?.length && r.stars < 5 ? `<p class="fix"><b>Frase:</b> ${esc(r.issues[0].es)}</p>` : ''}
+    ${r.corrected && r.stars < 5 ? `<p class="better"><b>Mejor así:</b> ${esc(r.corrected)}</p>` : ''}
     ${r.stars < 5 && r.words.length ? `<p class="said">${r.words.map((x) => (x.ok ? `<span class="w-ok">${esc(x.w)}</span>` : `<button type="button" class="w-no" data-word="${esc(x.w.replace(/[^\p{L}\p{N}' -]/gu, ''))}" aria-label="Escuchar ${esc(x.w)}">${esc(x.w)}</button>`)).join(' ')}</p>` : ''}
     ${heard && !r.assessed && r.stars < 5 ? `<p class="heard">Se entendió: «${esc(heard)}»</p>` : ''}
     ${r.words.some((x) => !x.ok) ? '<p class="heard">Toca una palabra para oírla.</p>' : ''}

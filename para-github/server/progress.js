@@ -4,9 +4,10 @@ import { addDays, diffDays, localDate, weekStart } from './dates.js';
 import { season, seasonKey, seasonStart } from './season.js';
 
 export const RULES = {
-  XP_LESSON: 10,
-  XP_SIMULATION: 20,
-  XP_REVIEW: 10,
+  // Un día completo: 15 + 25 + 15 = 55 XP.
+  XP_LESSON: 15,
+  XP_SIMULATION: 25,
+  XP_REVIEW: 15,
   COINS_PER_DAY: 20,
   COINS_PER_7_DAYS: 50,
   SHIELD_PRICE: 60,
@@ -63,10 +64,10 @@ export const ACHIEVEMENTS = {
   retried_phrase: { name: 'Volví a intentar una frase difícil', desc: 'Diste una respuesta nueva después de una corrección.' },
 };
 
-// Nivel general de la cuenta. Cada nivel cuesta 100 XP más que el anterior: con un día completo (40 XP)
-// el nivel 2 toma cerca de 8 días, el 3 unos 10 más, y así sucesivamente.
-const FIRST_LEVEL_COST = 300;
-const LEVEL_COST_STEP = 100;
+// Nivel general de la cuenta. Cada nivel cuesta 80 XP más que el anterior: con un día completo (55 XP)
+// el nivel 2 toma unos 5 días, el 3 unos 6 más, y así sucesivamente.
+const FIRST_LEVEL_COST = 250;
+const LEVEL_COST_STEP = 80;
 export const LEVEL_NAMES = ['Aprendiz', 'Ayudante', 'Mesero', 'Mesero experto', 'Capitán de sala', 'Jefe de sala', 'Maître', 'Leyenda'];
 
 export function xpLevel(totalXp) {

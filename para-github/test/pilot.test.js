@@ -225,7 +225,7 @@ test('E. terminar dos veces una leccion no suma otra vuelta ni XP', async () => 
   for (let i = 0; i < l.exercises.length; i++) await api('POST', '/api/lesson/u1l4/answer', { index: i, answer: correctAnswer(l.exercises[i], VOCAB_BY_ID) });
   const a = (await api('POST', '/api/lesson/u1l4/complete')).data;
   const b = (await api('POST', '/api/lesson/u1l4/complete')).data;
-  assert.equal(a.xp, 10);
+  assert.equal(a.xp, 15);
   assert.equal(b.xp, 0);
   assert.equal(b.duplicate, true);
   assert.equal(app.db.prepare('SELECT times FROM lesson_progress').get().times, 1);
@@ -281,7 +281,7 @@ test('F. repetir palabras no completa, aunque existan en el vocabulario', async 
   assert.equal(out.sim.outcome, 'attempted');
   const related = await play(api, 'drinks_first', ['The water is good here', 'We have fresh water today', 'The tea is good too', 'It comes in a glass']);
   assert.equal(related.sim.outcome, 'completed', 'equivocarse con respuestas relacionadas si cuenta');
-  assert.equal(related.rewards.xp, 20);
+  assert.equal(related.rewards.xp, 25);
   await app.stop();
 });
 
@@ -444,7 +444,7 @@ test('Hoy: responde que hacer, cuanto llevo y que gane', async () => {
   assert.equal(after.session.minimumMet, true);
   assert.equal(after.session.briefOnly, true);
   assert.equal(after.stats.earnedToday.coins, 20);
-  assert.equal(after.stats.earnedToday.xp, 10);
+  assert.equal(after.stats.earnedToday.xp, 15);
   app.clockBox.now += 86400000;
   const tomorrow = (await api('GET', '/api/today')).data;
   assert.equal(tomorrow.stats.current, 1, 'la racha sigue al dia siguiente');

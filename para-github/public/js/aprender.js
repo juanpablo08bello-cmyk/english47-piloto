@@ -24,16 +24,42 @@ export async function viewAprender(ctx) {
     <div class="learn-progress"><span class="spread small"><b>Frases vistas</b><span>${data.seen} de ${data.total}</span></span><div class="bar bar-learn"><i style="width:${pct}%"></i></div></div>
     ${guideHtml('aprender', ['<b>Temas:</b> juegos con palabras para que no se te olviden.', '<b>Generar frases:</b> practicas esas palabras dentro de frases reales.', '<b>Diccionario VIP:</b> todas las palabras en tablas, para consultar.', `Haz <b>${data.goal} al día</b> entre tandas y juegos para cumplir esta sección.`])}
     <a class="btn btn-primary btn-xl btn-block" href="#/aprender/jugar">${icons.dice}Generar frases</a>
+    <a class="vip-card temas-card" href="#/aprender/temas">
+      <span class="vip-card-icon">${GAMES_ICON}</span>
+      <span class="grow"><b>Temas</b><small>${data.themes.length} juegos para no olvidarlas</small></span>
+      <span class="temas-dots" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+      <span class="fold-chevron vip-card-go" aria-hidden="true"></span>
+    </a>
     <a class="vip-card" href="#/aprender/vip">
       <span class="vip-card-icon">${vipIcon}</span>
       <span class="grow"><b>Diccionario VIP</b><small>Todas las palabras, en tablas</small></span>
       <span class="fold-chevron vip-card-go" aria-hidden="true"></span>
     </a>
-    <div class="section-head"><h2>Temas</h2><span class="small muted">Juegos para no olvidarlas</span></div>
-    <div class="topics">${data.themes.map((t, i) => `<a class="topic topic-${(i % 4) + 1}" href="#/aprender/tema/${t.id}"><b>${esc(t.title)}</b><span class="topic-progress"><i style="width:${Math.round((t.seen / t.total) * 100)}%"></i></span><span>${t.seen}/${t.total}</span></a>`).join('')}</div>
     ${data.learned.length ? foldHtml({ title: 'Mis palabras', icon: icons.words, meta: String(data.learned.length), body: `<ul class="my-words">${data.learned.map(([en, es]) => `<li><b>${esc(en)}</b><span>${esc(es)}</span></li>`).join('')}</ul>` }) : ''}
   </div>`, { tab: '#/aprender' });
   bindGuide(home);
+}
+
+const GAMES_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="2"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="2"/><path d="M17.25 13.5v7.5M13.5 17.25H21"/></svg>';
+
+/** Temas: todos los juegos en su propia página, cada uno con su color y su avance. */
+export async function viewTemas(ctx) {
+  const data = await api('GET', '/api/aprender');
+  const practiced = data.themes.reduce((n, t) => n + t.seen, 0);
+  const total = data.themes.reduce((n, t) => n + t.total, 0);
+  ctx.shell(`<div class="page page-wide">
+    <a class="vip-back" href="#/aprender">${icons.back}Aprender palabras</a>
+    <header class="hero hero-temas">
+      <div class="grow">
+        <p class="vip-kicker">${GAMES_ICON}JUEGOS</p>
+        <h1 class="display">Temas</h1>
+        <p class="hero-count"><b>${practiced}</b> de ${total} palabras jugadas</p>
+      </div>
+      ${capybara({ mood: 'cheer', size: 92, equipped: ctx.state.me?.equipped })}
+    </header>
+    <p class="small muted center">Parejas, significados, escuchar, ordenar frases y más. Cada tema cuenta para tu meta del día.</p>
+    <div class="topics">${data.themes.map((t, i) => `<a class="topic topic-${(i % 4) + 1}" href="#/aprender/tema/${t.id}"><b>${esc(t.title)}</b><span class="topic-progress"><i style="width:${Math.round((t.seen / t.total) * 100)}%"></i></span><span>${t.seen}/${t.total}</span></a>`).join('')}</div>
+  </div>`, { tab: '#/aprender' });
 }
 
 export async function viewAprenderJugar(ctx, topic) {

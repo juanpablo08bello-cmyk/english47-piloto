@@ -56,6 +56,14 @@ const WORDS = {
 const WORD = /[\p{L}\d]+(?:['’]\p{L}+)*/gu;
 
 /** Palabras sin pronunciación escrita. Una prueba exige que esta lista quede vacía. */
+// Palabras nuevas de la versión 1.3 (desayuno, happy hour, turno).
+Object.assign(WORDS, {
+  patio: 'pátio', round: 'ráund', whenever: 'uenéver', visiting: 'vísiting', anniversary: 'anivérsari', runner: 'ráner', nine: 'náin', run: 'ran',
+  seven: 'séven', wants: 'uánts', scrambled: 'scrámbold', toast: 'tóust', whole: 'jóul', bacon: 'béicon', sausage: 'sósech', pancakes: 'pánqueiks',
+  syrup: 'sírap', serve: 'serv', noon: 'nun', brunch: 'branch', starts: 'starts', fruit: 'frut', hash: 'jash', browns: 'bráuns', half: 'jaf',
+  price: 'práis', wings: 'uíngs', they: 'déi', tacos: 'tácos', cook: 'cuk', while: 'uáil',
+  overcooked: 'overcúkt', came: 'quéim',
+});
 export const missingWords = (text) => (String(text).match(WORD) ?? [])
   .map((w) => w.toLowerCase().replace(/’/g, "'"))
   .filter((w) => !Object.hasOwn(WORDS, w));

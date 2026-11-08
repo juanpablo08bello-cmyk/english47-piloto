@@ -75,8 +75,9 @@ test('Hoy y Perfil muestran el nivel y las propinas de las mesas', async () => {
   const { mesa } = (await api('POST', '/api/mesas/generar')).data;
   for (const [index, step] of mesa.steps.entries()) await api('POST', `/api/mesas/${mesa.id}/turno`, { index, heard: step.say.en });
   const end = (await api('POST', `/api/mesas/${mesa.id}/terminar`)).data;
-  assert.equal(end.summary.perfect, true);
-  assert.equal(end.summary.tip, mesa.steps.length * 10 + 5, 'diez por turno más el bono');
+  // Solo con texto (sin Azure) cada turno vale 4 estrellas: 8 dólares, sin bono de mesa perfecta.
+  assert.equal(end.summary.perfect, false);
+  assert.equal(end.summary.tip, mesa.steps.length * 8);
   const today = (await api('GET', '/api/today')).data.mesas;
   assert.equal(today.done, 1);
   assert.equal(today.tips, end.summary.tip);
@@ -106,7 +107,7 @@ test('las cuatro cuentas compiten en el ranking, también la que administra', as
   const mine = (await juan('GET', '/api/ranking')).data;
   assert.deepEqual(mine.me, { streak: 1, tips: 1 });
   assert.equal(mine.streak[0].value, 1);
-  assert.ok(mine.tips[0].value >= 50);
+  assert.ok(mine.tips[0].value >= 40);
   assert.deepEqual(mine.tips.slice(1).map((r) => r.value), [0, 0, 0]);
   assert.deepEqual((await alejandro('GET', '/api/ranking')).data.me, { streak: 2, tips: 2 }, 'los demás empatan en el segundo puesto');
   await app.stop();

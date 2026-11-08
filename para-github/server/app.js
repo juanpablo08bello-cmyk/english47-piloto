@@ -23,7 +23,7 @@ import {
   closeAbandoned, countStoredQuotes, createSim, finishSim, hintFor, publicSim, removeStoredQuotes, rephrase, retryAttempt, setComfort, takeTurn,
 } from './sim/engine.js';
 import { checkLimit, logUsage, usageReport, voiceStatus } from './voice/index.js';
-import { currentMesa, finishLearn, finishMesa, generateImprove, generateLearn, generateMesa, getPlan, improveAttempt, finishGame, generateGame, improveHome, leaderboard, learnHome, mesaProgress, vipTables, mesaTurn, speechPersona, speechTarget } from './practice.js';
+import { currentMesa, finishLearn, finishMesa, generateImprove, generateLearn, generateMesa, getPlan, improveAttempt, finishGame, generateGame, improveHome, leaderboard, learnHome, mesaProgress, vipTables, mesaTurn, speechPersona, speechTarget, judgeContext } from './practice.js';
 import { ProviderError } from './voice/providers.js';
 import { seasonGift, seasonKey, seasonStart } from './season.js';
 import { VOCAB, VOCAB_BY_ID } from '../content/vocab.js';
@@ -670,9 +670,21 @@ export function createApp({ db, config, services, clock = Date.now }) {
       throw err;
     }
     if (assessment.status === 'silence') return { status: 'silence' };
+    // Juez de construcción (Azure OpenAI): solo en respuestas libres, solo texto, y nunca bloquea si falla.
+    let judgment = null;
+    const context = services.judge && assessment.text ? await judgeContext(db, user, place, now) : null;
+    if (context && !(await checkLimit(db, config, user, 'judge', now))) {
+      try {
+        judgment = await services.judge.grade({ ...context, said: assessment.text });
+        await logUsage(db, user, 'judge', services.judge.name, judgment.tokens, 'tokens', now);
+      } catch (err) {
+        if (!(err instanceof ProviderError)) throw err;
+        judgment = null; // Se califica con las reglas propias.
+      }
+    }
     const out = fromResult(place.tipo === 'mesa'
-      ? await mesaTurn(db, user, place.id, { index: place.index, assessment }, now)
-      : await improveAttempt(db, user, { id: place.id, assessment }, now));
+      ? await mesaTurn(db, user, place.id, { index: place.index, assessment, judgment }, now)
+      : await improveAttempt(db, user, { id: place.id, assessment, judgment }, now));
     if (out.daily) out.daily.stats = await statsFor(user, now);
     return { status: 'ok', heard: assessment.text, result: out.result, attempts: out.attempts ?? null, daily: out.daily ?? null };
   }, { raw: true });

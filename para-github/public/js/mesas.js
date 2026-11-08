@@ -65,7 +65,7 @@ export async function viewMesas(ctx) {
     <button class="btn btn-primary btn-xxl btn-block" id="gen" ${problem ? 'disabled' : ''}>${icons.plate}GENERAR MESA</button>
     ${guideHtml('mesas', ['Toca <b>Generar mesa</b> y llega un cliente.', 'Lee y escucha lo que te dice.', 'Toca el <b>micrófono</b>, espera <b>Habla ahora</b> y responde en inglés.', 'Ganas hasta <b>5 estrellas</b> por turno. Cada estrella es <b>$2 de propina</b>, y tus propinas se guardan como monedas para la Tienda.', `Haz <b>${goal} mesas al día</b> para cumplir esta sección. Al atender más, sube la dificultad y verás menos ayuda.`])}
     ${mesa ? `<a class="btn btn-block" href="#/mesas/atender">${avatar(mesa.persona)}Seguir con ${esc(mesa.persona.name)}</a>` : ''}
-    <p class="small muted center">Tu voz va a Microsoft Azure para revisarla y la app no la guarda. Los pedidos y las propinas son de práctica.</p>
+    <p class="small muted center">Para revisarte, tu voz va a Azure y tu respuesta a Groq o Google. No se guarda tu voz. No digas datos personales.</p>
     ${pronNote()}
     <p id="err" class="notice notice-amber" hidden role="alert"></p>
   </div>`, { tab: '#/mesas' });

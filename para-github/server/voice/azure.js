@@ -79,7 +79,8 @@ export function azureSpeech({ apiKey, region }, transport = fetch, { retryMs = 8
     pronunciation: {
       name: 'azure:pronunciation-assessment',
       async assess({ audio, reference }) {
-        const config = { ReferenceText: reference, GradingSystem: 'HundredMark', Granularity: 'Word', Dimension: 'Comprehensive', EnableMiscue: Boolean(reference) };
+        // La prosodia (entonación, acento y ritmo) solo existe en en-US, que es el idioma que pedimos.
+        const config = { ReferenceText: reference, GradingSystem: 'HundredMark', Granularity: 'Word', Dimension: 'Comprehensive', EnableMiscue: Boolean(reference), EnableProsodyAssessment: true };
         const best = await recognize(audio, { 'Pronunciation-Assessment': Buffer.from(JSON.stringify(config)).toString('base64') });
         if (!best) return { status: 'silence', text: '' };
         // La respuesta trae las puntuaciones en la raíz o dentro de PronunciationAssessment, según el formato.
@@ -91,7 +92,10 @@ export function azureSpeech({ apiKey, region }, transport = fetch, { retryMs = 8
         return {
           status: 'ok',
           text: best.Display ?? '',
+          // Sin puntuación ni números convertidos: así se revisa la frase tal como se dijo.
+          lexical: best.Lexical ?? best.Display ?? '',
           score: Number(score.PronScore ?? 0),
+          prosody: Number(score.ProsodyScore ?? 0),
           accuracy: Number(score.AccuracyScore ?? 0),
           fluency: Number(score.FluencyScore ?? 0),
           completeness: Number(score.CompletenessScore ?? 0),

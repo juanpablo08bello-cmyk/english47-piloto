@@ -290,6 +290,16 @@ button.w-no { background: none; border: 0; padding: 0 2px; font: inherit; cursor
 .attention { animation: pulse 1s ease-in-out infinite; outline: 3px solid var(--action); outline-offset: 2px; }
 .heard { font-size: 15px; font-weight: 700; color: var(--text-2); }
 .tip { font-size: 15px; font-weight: 800; color: var(--text-2); }
+.parts { display: grid; gap: 6px; width: 100%; max-width: 260px; }
+.part { display: grid; grid-template-columns: 48px 1fr; align-items: center; gap: 8px; font-size: 14px; font-weight: 900; color: var(--text-2); text-align: left; }
+.part i { display: block; height: 10px; border-radius: 99px; background: rgba(255, 255, 255, 0.1); overflow: hidden; }
+.part b { display: block; height: 100%; border-radius: 99px; }
+.part-build b { background: var(--learn); }
+.part-voice b { background: var(--improve); }
+.fix { font-size: 16px; font-weight: 800; color: var(--action); max-width: 300px; }
+.fix b { color: var(--text); }
+.better { font-size: 17px; font-weight: 900; color: var(--improve); max-width: 300px; }
+.better b { color: var(--text-2); font-weight: 800; }
 .tip b { color: var(--warn); }
 
 /* Micrófono */
@@ -962,6 +972,23 @@ button.shop-tag { min-height: 46px; padding: 6px 14px; font-size: 16px; }
 .hero-vip { background: linear-gradient(135deg, #fff050, #ffc14d); --hero-glow: var(--action); }
 .vip-kicker { display: inline-flex; align-items: center; gap: 5px; font-size: 14px; font-weight: 1000; letter-spacing: .08em; }
 .vip-kicker svg { width: 18px; height: 18px; }
+
+/* --- 1.3: Temas como pestaña de colores (junto al Diccionario VIP) --- */
+.temas-card { border-color: #4a4f9c; background: linear-gradient(135deg, #24285c, #2a1838 55%, #17171f); }
+.temas-card b { color: var(--learn); }
+.temas-card .vip-card-icon { background: linear-gradient(135deg, var(--learn), var(--pink)); }
+.temas-dots { display: grid; grid-template-columns: repeat(2, 10px); gap: 4px; flex: none; }
+.temas-dots i { width: 10px; height: 10px; border-radius: 4px; }
+.temas-dots i:nth-child(1) { background: var(--learn); }
+.temas-dots i:nth-child(2) { background: var(--sky); }
+.temas-dots i:nth-child(3) { background: var(--pink); }
+.temas-dots i:nth-child(4) { background: var(--improve); }
+.rank-empty { display: flex; flex-direction: column; gap: 4px; padding: 18px; border: 1px dashed var(--line); border-radius: 22px; text-align: center; }
+.rank-empty b { font-size: 19px; font-weight: 1000; }
+.rank-empty span { font-size: 15px; font-weight: 700; color: var(--text-2); }
+.hero-temas { background: linear-gradient(135deg, var(--learn), var(--pink)); --hero-glow: var(--learn); }
+.topic { position: relative; overflow: hidden; box-shadow: inset 0 -4px 0 rgba(0, 0, 0, .12); }
+.topic::after { content: ''; position: absolute; right: -18px; top: -18px; width: 64px; height: 64px; border-radius: 50%; background: rgba(255, 255, 255, .22); }
 .vip-search .input { min-height: 54px; border-radius: 18px; font-size: 17px; }
 .vip-fold > summary { min-height: 64px; }
 .vip-fold { border-left: 5px solid var(--vip-color, var(--action)); }
@@ -1011,6 +1038,14 @@ button.shop-tag { min-height: 46px; padding: 6px 14px; font-size: 16px; }
 .letters-built.built-no .letter-slot { background: var(--warn); color: var(--ink); }
 .letters-pool { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
 .letters-pool .token { min-width: 50px; font-size: 22px; }
+.words-built { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; min-height: 64px; align-items: center; padding: 12px 10px; border-radius: 20px; background: var(--surface); }
+.word-chip { padding: 8px 12px; border-radius: 12px; background: var(--surface-2); font-size: 20px; font-weight: 1000; }
+.words-built.built-ok .word-chip { background: var(--good); color: var(--ink); }
+.words-built.built-no .word-chip { background: var(--warn); color: var(--ink); }
+.words-empty { font-size: 15px; font-weight: 800; color: var(--text-2); }
+.words-pool { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.listen-big { width: 112px; height: 112px; margin: 6px auto 4px; display: grid; place-items: center; border: 0; border-radius: 50%; background: var(--learn); color: var(--ink); cursor: pointer; }
+.listen-big svg { width: 48px; height: 48px; }
 #undo { align-self: center; }
 .game-words { width: 100%; max-height: 210px; }
 @media (hover: hover) {
@@ -1027,3 +1062,20 @@ button.shop-tag { min-height: 46px; padding: 6px 14px; font-size: 16px; }
   .vip-say { font-size: 16.5px; }
   .pair { min-height: 76px; font-size: 18px; }
 }
+
+/* --- 1.3: pulido general. Mismas piezas, más ordenadas y con un poco de profundidad. --- */
+.btn:not(.btn-primary):not(.btn-green):not(.btn-ink):not(.btn-improve):not(.btn-help):not(:disabled) { background: linear-gradient(180deg, #20202b, var(--surface)); border-color: var(--line-soft); }
+.btn-primary, .btn-xl, .btn-xxl { font-weight: 1000; letter-spacing: -0.005em; }
+.btn-primary:not(:disabled) { background: linear-gradient(180deg, #fff57a, var(--action)); }
+.iconbtn { border: 1px solid var(--line-soft); }
+.option { border: 1px solid var(--line-soft); background: linear-gradient(180deg, #1d1d27, var(--surface)); font-weight: 900; transition: transform .1s, background .15s, border-color .15s; }
+.option:active:not(:disabled) { border-color: var(--line); }
+.option.is-right { border-color: var(--good); background: var(--good); }
+.option.is-wrong { border-color: var(--warn); background: var(--warn); }
+.result { border: 1px solid var(--line-soft); background: linear-gradient(180deg, #1c1c26, var(--surface)); }
+.pair { box-shadow: inset 0 -3px 0 rgba(0, 0, 0, .14); }
+.pair-es { box-shadow: inset 0 0 0 1px var(--line-soft); }
+.game-title { letter-spacing: -0.01em; }
+.vip-card { box-shadow: 0 10px 30px -18px rgba(255, 240, 80, .55); }
+.temas-card { box-shadow: 0 10px 30px -18px rgba(169, 180, 255, .7); }
+.page > .small.muted.center { max-width: 34ch; margin-inline: auto; line-height: 1.4; }

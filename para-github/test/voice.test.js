@@ -115,7 +115,7 @@ test('conversacion IA por turnos: cliente y evaluador separados, usa menu y recu
   assert.equal(end.sim.summary.evaluationBasis, 'transcript');
   assert.equal(end.sim.summary.pronunciation, 'not_evaluated');
   assert.equal(end.sim.summary.improvements.length, 2, 'nunca mas de dos mejoras');
-  assert.equal(end.rewards.xp, 20);
+  assert.equal(end.rewards.xp, 25);
   await stop();
 });
 
