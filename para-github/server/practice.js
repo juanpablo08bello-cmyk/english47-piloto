@@ -254,7 +254,10 @@ export async function judgeContext(db, user, { tipo, id, index }, now) {
 
 /** La frase guía la decide el servidor: el alumno no puede cambiar contra qué se le evalúa. */
 export async function speechTarget(db, user, { tipo, id, index }, now) {
-  const { practice } = (await load(db, user, now)).state;
+  const session = await load(db, user, now);
+  const { practice } = session.state;
+  // Conversación: la frase sale del plan de hoy (nunca de lo que envíe el cliente). Antes devolvía null → 404 y la voz jamás se evaluaba.
+  if (tipo === 'conv') return targetOf(practice.conv, index, session.sessionDate);
   if (tipo === 'mesa') {
     const mesa = practice.tables.current;
     if (!mesa || mesa.id !== id || mesa.finished) return null;

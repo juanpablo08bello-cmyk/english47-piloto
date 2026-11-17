@@ -1,5 +1,11 @@
 # Registro de cambios
 
+## 2.0.7 (17/11/2026): Conversar y Frases ya revisan tu voz
+
+- **Causa real del «No pudimos revisar tu voz»**: en Conversar/Frases el servidor no sabía qué frase evaluar (`speechTarget` no manejaba `conv`) y respondía 404 a CADA grabación. Ahora la referencia sale del plan de hoy. Prueba nueva en `test/conversacion.test.js`.
+- La voz grabada se sube a un nivel normal antes de enviarla (iPhone la graba muy baja) y se graba un respaldo con MediaRecorder por si el audio crudo llega mudo.
+- Si falla la red o el proveedor, se reintenta una vez solo; y el error muestra un código corto, por ejemplo «(404 not_found)», para poder diagnosticarlo. El servidor registra los errores de Azure (`[voz] proveedor ...`).
+
 ## 2.0.6 (17/11/2026): micrófono y audio en iPhone/Safari
 
 - **Micrófono**: ya no se graba con MediaRecorder (en Safari fallaba el formato, el decodificador o llegaban trozos vacíos). Se captura el audio crudo con Web Audio y se arma el WAV 16 kHz que pide el servidor (`web/src/lib/pcm.ts`); no hay nada que decodificar.

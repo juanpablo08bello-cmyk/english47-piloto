@@ -772,6 +772,7 @@ export function createApp({ db, config, services, clock = Date.now }) {
     } catch (err) {
       if (err instanceof ProviderError) {
         if (err.code === 'rate_limited') fail(429, 'limit_reached', 'Se agotó la revisión de voz por ahora.');
+        console.error(`[voz] proveedor ${err.code}: ${err.message}`);
         fail(502, `provider_${err.code}`, 'No pudimos revisar tu voz. Inténtalo de nuevo.');
       }
       throw err;

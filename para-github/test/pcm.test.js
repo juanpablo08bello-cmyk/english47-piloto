@@ -1,7 +1,7 @@
 // Captura del micrófono → WAV 16 kHz mono (web/src/lib/pcm.ts). Es lo que se manda al servidor tal cual (sin decodificar en Safari).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { downsample, encodeWav, isServerWav, WAV_RATE, WAV_MAX_S } from '../web/src/lib/pcm.ts';
+import { downsample, encodeWav, isServerWav, normalize, stats, WAV_RATE, WAV_MAX_S } from '../web/src/lib/pcm.ts';
 
 const tone = (rate, seconds, hz = 440, amp = 0.5) => Float32Array.from({ length: Math.round(rate * seconds) }, (_, i) => amp * Math.sin((2 * Math.PI * hz * i) / rate));
 const chunked = (arr, size) => { const out = []; for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size)); return out; };
@@ -44,4 +44,24 @@ test('recorta lo que se sale de [-1, 1] sin dar la vuelta', async () => {
   const v = new DataView(await wav.arrayBuffer());
   assert.equal(v.getInt16(44, true), 32767);
   assert.equal(v.getInt16(46, true), -32767);
+});
+
+test('una voz muy baja (iPhone sin control de ganancia) se sube a un nivel que el reconocedor entiende', () => {
+  const quiet = tone(16000, 1, 300, 0.01);
+  const { out, gain } = normalize(quiet);
+  assert.ok(gain > 5, `ganancia ${gain}`);
+  const { rms, peak } = stats(out);
+  assert.ok(rms > 0.08 && rms < 0.2, `rms ${rms}`);
+  assert.ok(peak <= 1);
+});
+
+test('no toca el silencio total ni una voz que ya viene fuerte', () => {
+  assert.equal(normalize(new Float32Array(16000)).gain, 1);
+  assert.equal(normalize(tone(16000, 1, 300, 0.6)).gain, 1);
+});
+
+test('un pico enorme no pasa de 1 tras subir el volumen', () => {
+  const x = tone(16000, 1, 300, 0.02); x[100] = 0.9;
+  const { out } = normalize(x);
+  assert.ok(out.every((v) => Math.abs(v) <= 1));
 });

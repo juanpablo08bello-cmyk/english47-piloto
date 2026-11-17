@@ -112,3 +112,28 @@ test('Conversación: una temporada nueva empieza de cero (nuevo pack, nada apren
     assert.equal(home.review.length, 0);
   } finally { setSeason(null); await app.stop(); }
 });
+
+test('Conversación por voz: el servidor evalúa la frase de hoy contra su referencia (antes daba 404 y «No pudimos revisar tu voz»)', async () => {
+  const wav = () => {
+    const n = 16000; const b = Buffer.alloc(44 + n * 2);
+    b.write('RIFF', 0); b.writeUInt32LE(36 + n * 2, 4); b.write('WAVEfmt ', 8); b.writeUInt32LE(16, 16); b.writeUInt16LE(1, 20); b.writeUInt16LE(1, 22);
+    b.writeUInt32LE(16000, 24); b.writeUInt32LE(32000, 28); b.writeUInt16LE(2, 32); b.writeUInt16LE(16, 34); b.write('data', 36); b.writeUInt32LE(n * 2, 40);
+    return b;
+  };
+  const seen = [];
+  const pronunciation = { name: 'prueba', assess: async ({ reference }) => { seen.push(reference); return { status: 'ok', text: reference, score: 92, words: reference.toLowerCase().replace(/[^a-z' ]/g, '').split(' ').filter(Boolean).map((w) => ({ word: w, accuracy: 95, error: 'None' })) }; } };
+  const app = await startApp({ services: { llm: null, stt: null, tts: null, pronunciation } });
+  try {
+    const api = await login(app, 'ana');
+    const home = (await api('GET', '/api/conversacion')).data;
+    const frase = home.pack[0];
+    const post = (index) => fetch(`${app.base}/api/voz/evaluar?tipo=conv&id=0&index=${index}`, { method: 'POST', headers: { 'Content-Type': 'audio/wav', cookie: api.cookie() }, body: wav() });
+    const res = await post(frase.id);
+    assert.equal(res.status, 200);
+    const data = await res.json();
+    assert.equal(data.status, 'ok');
+    assert.ok(data.result.stars >= 4, `estrellas ${data.result.stars}`);
+    assert.deepEqual(seen, [frase.en], 'la referencia sale del plan de hoy, no del cliente');
+    assert.equal((await post(999999)).status, 404, 'una frase que no es de hoy no se evalúa');
+  } finally { await app.stop(); }
+});
