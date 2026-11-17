@@ -1,5 +1,17 @@
 # Registro de cambios
 
+## 2.0.6 (17/11/2026): micrófono y audio en iPhone/Safari
+
+- **Micrófono**: ya no se graba con MediaRecorder (en Safari fallaba el formato, el decodificador o llegaban trozos vacíos). Se captura el audio crudo con Web Audio y se arma el WAV 16 kHz que pide el servidor (`web/src/lib/pcm.ts`); no hay nada que decodificar.
+- Un «mute» corto de iOS (suena un efecto, cambia la ruta de audio) ya no muestra «se desconectó el micrófono»: solo cuenta si dura más de 1,5 s, y si pasa en los primeros 6 s se reabre solo.
+- El pitido de inicio suena antes de abrir el micro y el de fin después de cortarlo; el ruido de fondo se mide sin el pitido.
+- Safari que decía «bloqueado» con el permiso ya arreglado: ahora se vuelve a intentar de verdad.
+- Ocultar la página un instante (aviso de permiso, centro de control) ya no corta la grabación: 600 ms de margen.
+- **Audio**: el micrófono se suelta antes de que suene cualquier voz (iOS bajaba el volumen de todo y a veces cortaba la pista), y la sesión de audio pasa a «play-and-record» al grabar y «playback» al soltar (`navigator.audioSession`, bug WebKit 236219).
+- Un solo `AudioContext` y un solo reproductor para toda la app (efectos, «Tu voz», voz del cliente y Aprender/Repasar). Antes Aprender usaba otro reproductor sin desbloquear.
+- El desbloqueo de audio fallaba en iPhone: el silencio era un `data:` que la CSP del servidor bloquea, y se hacía en `pointerdown`/`touchstart`, que iOS no cuenta como gesto de audio. Ahora es un blob y se hace en `touchend`/`click`.
+- Voz del cliente con más volumen: a velocidad normal pasa por Web Audio con ganancia extra y limitador; el modo lento sigue con `<audio>` para no cambiar el tono.
+
 ## Sin versión (16/11/2026)
 
 Diccionario de ~3.100 palabras por temas y niveles, 223 escenas de Mesas, 16 unidades, 48 packs de Conversación, importador de cartas (foto, PDF, link, QR) y sección «Ceviches by Divino Miami Beach» con su carta real. Ver docs/reforma/43-divino-y-contenido.md.
