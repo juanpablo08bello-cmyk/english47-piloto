@@ -13,7 +13,14 @@ import { VIP_BY_ID, VIP_TABLES, vipWord } from '../content/diccionario.js';
 import { goalFor } from '../content/objetivos.js';
 import { pronounce } from '../content/pronunciacion.js';
 import { buildReply, clientLine } from '../content/pronunciar.js';
-import { ACCENTS, AZURE_VOICES, CAST, MOODS, VOICES, buildMesa, levelFor, mesaKey, recentFrom } from '../content/mesas.js';
+import { ACCENTS, AZURE_VOICES, CAST, CLIENTES, CLIENTE_IDS, LEVELS, MOODS, PACES, VOICES, buildMesa, levelFor, mesaKey, recentFrom } from '../content/mesas.js';
+import { RESTAURANTES, RESTAURANTE_BASE, RESTAURANTE_POR_ID, RESTAURANTE_PROPIO, abierto, estadoRestaurantes } from '../content/restaurantes.js';
+import { resenaDeTurno } from '../content/resenas.js';
+import { checkOrder } from './order.js';
+import { FRASES_CONV_CUE } from '../content/conversacion.js';
+import { carryConv, convFor, dayInfo, dueIds, finishPack, finishReview, freshConv, packIds, planConv, recordAttempt, targetOf } from './conv-core.js';
+import { MAX_PLATOS, listarMenu, menusDisponibles, requisitosMenu, restauranteDesdeMenu, restauranteDivino } from './menus.js';
+import { DIVINO_ID, DIVINO_MENU } from '../content/divino.js';
 
 const RECENT_PHRASES = 60;
 // Para sumar a la racha hay que hacer esto en cada sección: tandas, mesas, y audios o situaciones.
@@ -233,7 +240,9 @@ function betterWay(build, text) {
 
 /** Contexto para el juez: solo turnos donde el alumno arma su propia frase. La lectura guiada no lo necesita. */
 export async function judgeContext(db, user, { tipo, id, index }, now) {
-  const { practice } = (await load(db, user, now)).state;
+  const session = await load(db, user, now);
+  const { practice } = session.state;
+  if (tipo === 'conv') return targetOf(practice.conv, index, session.sessionDate);
   if (tipo === 'mesa') {
     const step = practice.tables.current?.id === id ? practice.tables.current.steps[index] : null;
     return step && isOpenTurn(step) ? { guest: step.guest.en, goal: step.say.goal ?? null, models: step.say.alts } : null;
@@ -266,8 +275,9 @@ function freshPractice() {
   return {
     season: season().id,
     learn: { pack: [], topic: null, count: 0, counted: false, recent: [] },
-    tables: { nextId: 1, count: 0, current: null, recent: [], weak: [] },
+    tables: { nextId: 1, count: 0, current: null, recent: [], weak: [], turno: null, turnoNextId: 1 },
     improve: { attempts: 0, paid: false, current: null, nextId: 1, recent: [], replies: [] },
+    conv: freshConv(),
   };
 }
 
@@ -278,6 +288,8 @@ function withMemory(before) {
   practice.tables.recent = before.tables?.recent ?? [];
   practice.improve.recent = before.improve?.recent ?? [];
   practice.improve.replies = before.improve?.replies ?? [];
+  // Lo aprendido en Conversación pasa de un día al siguiente, pero una temporada nueva empieza de cero.
+  if ((before.season ?? 0) === season().id) practice.conv = carryConv(before);
   if ((before.season ?? 0) === season().id) practice.tables.weak = before.tables?.weak ?? [];
   return practice;
 }
@@ -286,7 +298,7 @@ async function load(db, user, now) {
   const session = await getSession(db, user, now);
   // Día nuevo: el progreso empieza en cero, pero sigue la memoria de lo visto para no repetir ejercicios.
   if (!session.state.practice) {
-    const row = await db.prepare('SELECT state FROM daily_sessions WHERE user_id=? AND local_date<? ORDER BY local_date DESC LIMIT 1').get(user.id, session.sessionDate);
+    const row = await db.prepare(`SELECT state FROM daily_sessions WHERE user_id=? AND local_date<? AND state LIKE '%"practice"%' ORDER BY local_date DESC LIMIT 1`).get(user.id, session.sessionDate);
     let before = null;
     try { before = row ? JSON.parse(row.state).practice ?? null : null; } catch { before = null; }
     session.state.practice = withMemory(before);
@@ -299,6 +311,8 @@ async function load(db, user, now) {
   }
   // Jornadas empezadas con una versión anterior.
   const { learn, improve } = session.state.practice;
+  session.state.practice.tables.turno ??= null;
+  session.state.practice.tables.turnoNextId ??= 1;
   learn.recent ??= [];
   learn.count ??= 0;
   improve.paid ??= Boolean(improve.done);
@@ -306,6 +320,7 @@ async function load(db, user, now) {
   improve.nextId ??= 1;
   improve.recent ??= [];
   improve.replies ??= [];
+  convFor(session.state.practice, session.sessionDate);
   return session;
 }
 
@@ -315,19 +330,27 @@ async function save(db, user, session, now) {
 }
 
 function planOf(p) {
+  const conv = p.conv;
+  const convPlan = planConv(conv);
+  const reviewDone = (conv.dueN ?? 0) === 0 || Boolean(conv.today.reviewCounted);
+  // La racha: un par de Mesas + repasar las frases que tocan + la Conversación de hoy.
+  // Aprender frases nuevas (tandas, temas, VIP) vive en la Biblioteca y no cuenta para la racha.
   const steps = {
-    learn: p.learn.count >= GOALS.learn,
     tables: p.tables.count >= GOALS.tables,
-    improve: p.improve.attempts >= GOALS.improve,
+    review: reviewDone,
+    conv: convPlan.done || convPlan.finishedAll,
   };
   return {
-    learn: { done: steps.learn, count: p.learn.count, goal: GOALS.learn, xp: RULES.XP_LESSON },
     tables: { done: steps.tables, count: p.tables.count, goal: GOALS.tables, xp: RULES.XP_SIMULATION, open: Boolean(p.tables.current && !p.tables.current.finished) },
-    improve: { done: steps.improve, count: p.improve.attempts, goal: GOALS.improve, xp: RULES.XP_REVIEW },
+    review: { done: steps.review, count: conv.today.reviewCounted ? 1 : 0, goal: 1, due: conv.dueN ?? 0, xp: RULES.XP_REVIEW },
+    conv: { ...convPlan, done: steps.conv, xp: RULES.XP_LESSON },
+    // Solo informativos (no cuentan para la racha).
+    learn: { done: p.learn.count >= GOALS.learn, count: p.learn.count, goal: GOALS.learn, xp: RULES.XP_LESSON, streak: false },
+    improve: { done: p.improve.attempts >= GOALS.improve, count: p.improve.attempts, goal: GOALS.improve, xp: RULES.XP_REVIEW, streak: false },
     doneCount: Object.values(steps).filter(Boolean).length,
     total: 3,
     allDone: Object.values(steps).every(Boolean),
-    next: !steps.learn ? 'learn' : !steps.tables ? 'tables' : !steps.improve ? 'improve' : null,
+    next: !steps.conv ? 'conv' : !steps.tables ? 'tables' : !steps.review ? 'review' : null,
   };
 }
 
@@ -490,7 +513,7 @@ export async function learnHome(db, user, now) {
     total: FRASES.length,
     themes: await (async () => {
       const seenVip = new Set(await practicedVip(db, user));
-      return VIP_TABLES.map((t) => { const rows = playable(t); return { id: t.id, title: t.title, total: rows.length, seen: rows.filter((r) => seenVip.has(`${t.id}:${vipWord(t, r)}`)).length }; });
+      return VIP_TABLES.map((t) => { const rows = playable(t); return { id: t.id, title: t.title, grupo: t.grupo ?? 'restaurante', total: rows.length, seen: rows.filter((r) => seenVip.has(`${t.id}:${vipWord(t, r)}`)).length }; });
     })(),
     topics: TOPICS.map((t) => {
       const list = FRASES.filter((x) => x.topic === t.id);
@@ -542,19 +565,52 @@ export async function finishLearn(db, user, now) {
 }
 
 // --- Mesas ---
-/** Nivel y propinas valen para todos los días. La propina va en la clave: mesa_done:fecha:id:propina. */
+// Dos modos. El Turno es una «noche» de 3 a 5 mesas con reseña final: sus mesas cuentan para la meta diaria, el nivel y la racha.
+// El Servicio libre es infinito: mismo aprendizaje (las frases flojas entran al repaso), propina con curva decreciente y tope
+// diario, y no suma racha ni nivel. La clave de la propina lleva el modo: mesa_done:fecha:id:propina o mesa_libre:fecha:id:propina.
+export const MODOS = ['turno', 'libre'];
+/** Servicio libre: cada mesa del día vale menos propina (curva) y el día no pasa de este tope. */
+export const LIBRE_TIP_CAP = 60;
+export const LIBRE_CURVE = [1, 0.8, 0.6, 0.4, 0.25, 0.1];
+export const libreFactor = (hechas) => LIBRE_CURVE[Math.min(Math.max(hechas, 0), LIBRE_CURVE.length - 1)];
+/** Mesas por Turno: 3 al empezar, hasta 5 con los clientes más difíciles. */
+export const turnoSize = (level) => (level >= 4 ? 5 : level === 3 ? 4 : 3);
+
+/** Propina de una mesa libre: la base ya calculada, por el factor de la curva, sin pasar del tope que queda hoy. */
+export function libreTip(base, hechasHoy, usadoHoy) {
+  const factor = libreFactor(hechasHoy);
+  const bruto = Math.round(base * factor);
+  const tip = Math.max(0, Math.min(bruto, LIBRE_TIP_CAP - usadoHoy));
+  return { tip, bruto, factor, topeAlcanzado: tip < bruto };
+}
+
+/** Nivel y propinas valen para todos los días. Solo las mesas de Turno suben el nivel; las propinas de las dos cuentan. */
 async function mesaStats(db, user) {
-  const rows = await db.prepare("SELECT key FROM reward_events WHERE user_id=? AND key LIKE 'mesa_done:%' AND created_at>=?").all(user.id, seasonStart());
-  return { done: rows.length, tips: rows.reduce((n, r) => n + (Number(r.key.split(':')[3]) || 0), 0) };
+  const rows = await db.prepare("SELECT key FROM reward_events WHERE user_id=? AND (key LIKE 'mesa_done:%' OR key LIKE 'mesa_libre:%') AND created_at>=?").all(user.id, seasonStart());
+  return { done: rows.filter((r) => r.key.startsWith('mesa_done:')).length, tips: rows.reduce((n, r) => n + (Number(r.key.split(':')[3]) || 0), 0) };
 }
 const progressOf = ({ done, tips }) => ({ ...levelFor(done), tips });
 export const mesaProgress = async (db, user) => progressOf(await mesaStats(db, user));
+
+/** Lo que ya dio hoy el Servicio libre: cuántas mesas y cuánta propina. */
+async function libreHoy(db, user, date) {
+  const rows = await db.prepare('SELECT key FROM reward_events WHERE user_id=? AND key LIKE ? AND created_at>=?').all(user.id, `mesa_libre:${date}:%`, seasonStart());
+  return { mesas: rows.length, propinas: rows.reduce((n, r) => n + (Number(r.key.split(':')[3]) || 0), 0) };
+}
+const libreEstado = ({ mesas, propinas }) => ({
+  mesasHoy: mesas, propinasHoy: propinas, tope: LIBRE_TIP_CAP, restante: Math.max(0, LIBRE_TIP_CAP - propinas), siguienteFactor: libreFactor(mesas),
+});
+
 // Sin revisión automática, decidir "me salió bien" vale poco: la propina premia lo evaluado.
 const tipOf = (attempt) => (!attempt ? 0 : attempt.selfCheck ? 1 : attempt.stars) * TIP_PER_STAR;
+// En Servicio libre cuenta el primer intento de cada turno: reintentar sirve para aprender, no para subir la propina.
+const tipOfFirst = (attempt) => (!attempt?.first ? 0 : attempt.first.selfCheck ? 1 : attempt.first.stars) * TIP_PER_STAR;
 
-export function mesaTip(steps, attempts) {
-  const earned = steps.reduce((n, _, i) => n + tipOf(attempts[i]), 0);
-  const perfect = steps.every((_, i) => attempts[i]?.stars === MAX_STARS && !attempts[i].selfCheck);
+export function mesaTip(steps, attempts, { primerIntento = false } = {}) {
+  const value = primerIntento ? tipOfFirst : tipOf;
+  const earned = steps.reduce((n, _, i) => n + value(attempts[i]), 0);
+  const stars = (a) => (primerIntento ? a?.first : a);
+  const perfect = steps.every((_, i) => stars(attempts[i])?.stars === MAX_STARS && !stars(attempts[i]).selfCheck);
   return { tip: earned + (perfect ? PERFECT_BONUS : 0), perfect };
 }
 
@@ -572,34 +628,174 @@ export function assignHelp(steps, level, done, rng = Math.random) {
 
 function publicMesa(mesa) {
   const { steps, ...rest } = mesa;
-  return { ...rest, steps: steps.map(({ keep, linked, ...s }) => {
+  return { ...rest, steps: steps.map(({ keep, linked, pedido, ...s }) => {
     const { alts, ...say } = s.say;
     return { ...s, say: { ...say, pron: pronounce(s.say.en), goal: goalFor(s.say) } };
   }) };
 }
 
-export async function generateMesa(db, user, now, rng = Math.random) {
+const publicTurno = (t) => (t ? {
+  id: t.id, total: t.total, hechas: t.hechas, restantes: Math.max(0, t.total - t.hechas), estrellas: t.estrellas, propinas: t.propinas,
+  restauranteId: t.restauranteId, estado: t.estado, nivel: t.nivel, mesas: t.mesas, cierre: t.cierre ?? null,
+} : null);
+
+// --- Comanda en vivo: lo que el cliente va pidiendo, y qué datos ya quedaron anotados ---
+const TIPOS_COMANDA = { plato: 'Plato', entrada: 'Entrada', guarnicion: 'Guarnición', coccion: 'Cocción', bebida: 'Bebida', postre: 'Postre', alergia: 'Alergia' };
+/** Un dato queda anotado cuando respondes ese turno sin fallar (3 estrellas o más; la autoevaluación también cuenta). */
+const anotado = (attempt) => Boolean(attempt) && (attempt.selfCheck || attempt.stars >= 3);
+
+/** El pedido que se confirma al final, para comprobarlo con server/order.js: plato, cocción y guarnición. */
+function orderSpec(mesa) {
+  const all = mesa.steps.flatMap((s) => s.pedido ?? []);
+  const platos = all.filter((p) => p.tipo === 'plato');
+  if (!platos.length) return null;
+  const temp = all.find((p) => p.tipo === 'coccion');
+  const side = all.find((p) => p.tipo === 'guarnicion');
+  return {
+    items: platos.map((p, i) => ({
+      label: p.es, names: [p.en],
+      ...(i === 0 && temp ? { temp: temp.en } : {}),
+      ...(i === 0 && side ? { add: [{ label: side.es, words: [side.en] }] } : {}),
+    })),
+  };
+}
+
+/** Estado de la orden de la mesa: cada dato con su valor si ya está anotado (o pendiente, sin valor), y la confirmación final. */
+export function comandaOf(mesa) {
+  const items = [];
+  mesa.steps.forEach((s, i) => (s.pedido ?? []).forEach((p) => {
+    const ok = anotado(mesa.attempts[i]);
+    items.push({ tipo: p.tipo, etiqueta: TIPOS_COMANDA[p.tipo], turno: i, estado: ok ? 'confirmado' : 'pendiente', valor: ok ? { en: p.en, es: p.es } : null });
+  }));
+  const confirmIndex = mesa.steps.findIndex((s) => s.kind === 'confirm');
+  const attempt = confirmIndex >= 0 ? mesa.attempts[confirmIndex] : null;
+  const confirmados = items.filter((x) => x.estado === 'confirmado').length;
+  return {
+    items, total: items.length, confirmados, pendientes: items.length - confirmados,
+    tieneConfirmacion: confirmIndex >= 0,
+    // Con texto, la orden dicha se compara con lo pedido (order.js); sin texto (autoevaluación) solo cuenta haber respondido.
+    verificacion: attempt?.verif ?? null,
+    ordenConfirmada: confirmIndex < 0 ? null : anotado(attempt) && attempt.verif?.ok !== false,
+  };
+}
+
+/** Local y menú que usará la mesa. Sin local: el de siempre. Un local bloqueado o un menú propio incompleto es un error. */
+async function resolveRestaurant(db, user, id, done) {
+  if (id === RESTAURANTE_PROPIO) {
+    if (!(await menusDisponibles(db))) return { error: 'unavailable', message: 'El menú propio todavía no está disponible en este servidor.' };
+    const platos = await listarMenu(db, user.id);
+    const need = requisitosMenu(platos);
+    if (!need.listo) return { error: 'menu_incompleto', message: `Tu menú todavía no alcanza para jugar. ${need.faltan.join(' ')}` };
+    return { rest: restauranteDesdeMenu(platos) };
+  }
+  if (id === DIVINO_ID) return { rest: restauranteDivino() };
+  if (id === DIVINO_ID) return { rest: restauranteDivino() };
+  const rest = RESTAURANTE_POR_ID.get(id);
+  if (!rest) return { error: 'bad_request', message: 'Ese restaurante no existe.' };
+  if (!abierto(rest, done)) return { error: 'locked', message: `${rest.nombre} se abre al atender ${rest.desbloqueo.mesas} mesas de Turno.` };
+  return { rest };
+}
+
+const blank = (v) => v === undefined || v === null || v === '';
+
+/**
+ * Genera una mesa.
+ *  modo         'turno' (por defecto: lo de siempre, dentro de un Turno) o 'libre'
+ *  restauranteId  un local abierto, o 'propio'. Turno: el del Turno en curso o Harbor 47. Libre: al azar entre los abiertos
+ *  dificultad   solo libre: 1..nivel desbloqueado
+ *  cliente      solo libre: turista, ejecutivo, vip, familia o influencer
+ */
+export async function generateMesa(db, user, now, rng = Math.random, opts = {}) {
+  const modo = blank(opts.modo) ? 'turno' : String(opts.modo);
+  if (!MODOS.includes(modo)) return { error: 'bad_request', message: `El modo debe ser ${MODOS.join(' o ')}.` };
+  if (modo === 'turno' && (!blank(opts.dificultad) || !blank(opts.cliente))) return { error: 'bad_request', message: 'La dificultad y el tipo de cliente solo se eligen en Servicio libre.' };
   const session = await load(db, user, now);
   const { tables } = session.state.practice;
   const { done } = await mesaStats(db, user);
-  const mesa = buildMesa(rng, { done, ...recentFrom(tables.recent) });
+  const unlocked = levelFor(done).level;
+
+  let level = null;
+  if (!blank(opts.dificultad)) {
+    const n = Number(opts.dificultad);
+    if (!Number.isInteger(n) || n < 1 || n > LEVELS.length) return { error: 'bad_request', message: `La dificultad es un número del 1 al ${LEVELS.length}.` };
+    if (n > unlocked) return { error: 'locked', message: `Todavía no tienes la dificultad ${n}. Llegas hasta la ${unlocked}.` };
+    level = n;
+  }
+  let cliente = null;
+  if (!blank(opts.cliente)) {
+    cliente = String(opts.cliente);
+    if (!Object.hasOwn(CLIENTES, cliente)) return { error: 'bad_request', message: `El cliente debe ser: ${CLIENTE_IDS.join(', ')}.` };
+  }
+
+  let restId = blank(opts.restauranteId) ? null : String(opts.restauranteId);
+  const open = tables.turno?.estado === 'abierto' ? tables.turno : null;
+  if (modo === 'turno') {
+    if (open && restId && restId !== open.restauranteId) return { error: 'conflict', message: 'Tienes un Turno en curso en otro restaurante. Termínalo para cambiar.' };
+    restId = open ? open.restauranteId : (restId ?? RESTAURANTE_BASE);
+  } else if (!restId) {
+    const choices = RESTAURANTES.filter((r) => abierto(r, done));
+    restId = choices[Math.floor(rng() * choices.length)].id;
+  }
+  const found = await resolveRestaurant(db, user, restId, done);
+  if (found.error) return found;
+  const rest = found.rest;
+
+  const mesa = buildMesa(rng, { done, level, cliente, restaurant: rest, ...recentFrom(tables.recent) });
   assignHelp(mesa.steps, mesa.level, done, rng).forEach((show, i) => { mesa.steps[i].show = show; });
   tables.recent = [mesaKey(mesa), ...tables.recent].slice(0, 10);
-  tables.current = { id: tables.nextId, ...mesa, attempts: {}, finished: false };
+  let turno = null;
+  if (modo === 'turno') {
+    if (!open) {
+      tables.turnoNextId ??= 1;
+      tables.turno = { id: tables.turnoNextId, total: turnoSize(unlocked), hechas: 0, estrellas: [], propinas: 0, restauranteId: restId, estado: 'abierto', nivel: unlocked, mesas: [], cierre: null };
+      tables.turnoNextId += 1;
+    }
+    turno = tables.turno;
+  }
+  tables.current = {
+    id: tables.nextId, ...mesa, modo, turnoId: turno?.id ?? null, restauranteId: restId,
+    restaurante: { id: rest.id, nombre: rest.nombre, local: rest.local, sala: rest.sala },
+    attempts: {}, finished: false,
+  };
   tables.nextId += 1;
   await save(db, user, session, now);
-  return { mesa: publicMesa(tables.current) };
+  const out = { mesa: publicMesa(tables.current), comanda: comandaOf(tables.current), modo, turno: publicTurno(tables.turno) };
+  if (modo === 'libre') out.libre = libreEstado(await libreHoy(db, user, session.sessionDate));
+  return out;
 }
 
+/** Pantalla de Mesas: la mesa en curso, el Turno, los locales con su estado, el menú propio y lo que ofrece el Servicio libre. */
 export async function currentMesa(db, user, now) {
-  const { tables } = (await load(db, user, now)).state.practice;
+  const session = await load(db, user, now);
+  const { tables } = session.state.practice;
   const mesa = tables.current;
-  return { mesa: mesa && !mesa.finished ? publicMesa(mesa) : null, count: tables.count, goal: GOALS.tables, progress: progressOf(await mesaStats(db, user)) };
+  const stats = await mesaStats(db, user);
+  const progress = progressOf(stats);
+  let propio = { disponible: await menusDisponibles(db), platos: 0, listo: false, faltan: [] };
+  if (propio.disponible) {
+    const platos = await listarMenu(db, user.id);
+    const need = requisitosMenu(platos);
+    propio = { disponible: true, platos: platos.length, maximo: MAX_PLATOS, listo: need.listo, faltan: need.faltan };
+  }
+  const libre = libreEstado(await libreHoy(db, user, session.sessionDate));
+  return {
+    mesa: mesa && !mesa.finished ? publicMesa(mesa) : null,
+    comanda: mesa && !mesa.finished ? comandaOf(mesa) : null,
+    count: tables.count, goal: GOALS.tables, progress,
+    turno: publicTurno(tables.turno),
+    restaurantes: estadoRestaurantes(stats.done), propio, divino: { id: DIVINO_ID, nombre: 'Ceviches by Divino Miami Beach', platos: DIVINO_MENU.length },
+    libre: { ...libre, dificultadMax: progress.level, clientes: CLIENTE_IDS.map((id) => ({ id, nombre: CLIENTES[id].es, descripcion: CLIENTES[id].blurb })) },
+  };
 }
 
-function bestAttempt(attempts, index, result) {
+function bestAttempt(attempts, index, result, verif = null) {
   const prev = attempts[index];
-  attempts[index] = { stars: Math.max(prev?.stars ?? 0, result.stars), tries: (prev?.tries ?? 0) + 1, selfCheck: result.selfCheck || prev?.selfCheck || false };
+  attempts[index] = {
+    stars: Math.max(prev?.stars ?? 0, result.stars), tries: (prev?.tries ?? 0) + 1, selfCheck: result.selfCheck || prev?.selfCheck || false,
+    // El primer intento queda aparte: en Servicio libre es el que paga.
+    first: prev?.first ?? { stars: result.stars, selfCheck: Boolean(result.selfCheck) },
+    ...(verif ? { verif } : prev?.verif ? { verif: prev.verif } : {}),
+  };
 }
 
 export async function mesaTurn(db, user, mesaId, { index, heard, selfCheck, assessment, judgment = null }, now) {
@@ -613,9 +809,28 @@ export async function mesaTurn(db, user, mesaId, { index, heard, selfCheck, asse
     : selfCheck
       ? { words: step.say.en.split(/\s+/).map((w) => ({ w, ok: true })), ratio: null, stars: 0, understood: true, tip: null, selfCheck: true }
       : compareSpeech(step.say.en, heard);
-  bestAttempt(mesa.attempts, index, result);
+  // Al confirmar la orden, lo dicho se compara con el pedido (plato, cocción, guarnicion). No cambia estrellas ni propina.
+  let verif = null;
+  const said = assessment?.text ?? heard;
+  if (step.kind === 'confirm' && !selfCheck && typeof said === 'string' && said.trim()) {
+    const spec = orderSpec(mesa);
+    if (spec) { const check = checkOrder(said, spec); verif = { ok: check.ok, problemas: check.problems }; }
+  }
+  bestAttempt(mesa.attempts, index, result, verif);
   await save(db, user, session, now);
-  return { result };
+  return { result, comanda: comandaOf(mesa) };
+}
+
+/** Cierre del Turno: estrellas medias, propina y la reseña del cliente. XP y monedas del día los paga la meta diaria, no el Turno. */
+function cerrarTurno(turno, mesa) {
+  const graded = turno.estrellas.filter((n) => n !== null);
+  const avg = graded.length ? graded.reduce((n, s) => n + s, 0) / graded.length : null;
+  const perfectas = turno.mesas.filter((m) => m.perfect).length;
+  const resena = resenaDeTurno({ avg, perfects: perfectas, total: turno.total, local: mesa.restaurante?.local ?? null, autor: mesa.persona.name, seed: turno.id });
+  return {
+    estrellasMedias: avg === null ? null : Math.round(avg * 10) / 10, estrellas: resena.estrellas, propinas: turno.propinas, perfectas,
+    resena, debiles: [...new Set(turno.mesas.flatMap((m) => m.weak))].slice(0, 4),
+  };
 }
 
 export async function finishMesa(db, user, mesaId, now) {
@@ -623,30 +838,60 @@ export async function finishMesa(db, user, mesaId, now) {
   const { tables } = session.state.practice;
   const mesa = tables.current;
   if (!mesa || mesa.id !== mesaId) return { error: 'not_found', message: 'Esa mesa ya terminó. Genera otra.' };
-  if (mesa.finished) return { duplicate: true, rewards: noRewards(), plan: planOf(session.state.practice), summary: mesa.summary };
+  if (mesa.finished) return { duplicate: true, rewards: noRewards(), plan: planOf(session.state.practice), summary: mesa.summary, turno: publicTurno(tables.turno), comanda: comandaOf(mesa) };
   const answered = mesa.steps.filter((_, i) => mesa.attempts[i]).length;
   if (answered < Math.ceil(mesa.steps.length / 2)) return { error: 'too_short', message: 'Atiende un poco más la mesa para terminarla.' };
+  const modo = mesa.modo ?? 'turno';
+  const libre = modo === 'libre';
   const graded = Object.values(mesa.attempts).filter((a) => !a.selfCheck);
   const stars = graded.length ? Math.round(graded.reduce((n, a) => n + a.stars, 0) / graded.length) : null;
+  // Aprender no tiene tope ni depende del modo: lo flojo entra al repaso igual.
   const weak = mesa.steps.filter((_, i) => mesa.attempts[i] && !mesa.attempts[i].selfCheck && mesa.attempts[i].stars < 4).map((s) => s.say);
   tables.weak = [...weak, ...tables.weak].filter((x, i, all) => all.findIndex((o) => o.en === x.en) === i).slice(0, 12);
   mesa.finished = true;
-  const { tip, perfect } = mesaTip(mesa.steps, mesa.attempts);
-  mesa.summary = { stars, answered, total: mesa.steps.length, weak: weak.slice(0, 3), selfCheck: stars === null, tip, perfect };
-  tables.count += 1;
-  const before = levelFor((await mesaStats(db, user)).done).level;
-  await award(db, user.id, `mesa_done:${session.sessionDate}:${mesa.id}:${tip}`, { coins: tip }, now);
-  const progress = progressOf(await mesaStats(db, user));
-  const out = tables.count >= GOALS.tables
-    ? await settle(db, user, session, 'p_mesa', RULES.XP_SIMULATION, now)
-    : { rewards: noRewards(), plan: planOf(session.state.practice) };
-  out.progress = progress;
-  out.levelUp = progress.level > before;
+  const paid = mesaTip(mesa.steps, mesa.attempts, { primerIntento: libre });
+  const perfect = paid.perfect;
+  let tip = paid.tip;
+  let libreInfo = null;
+  if (libre) {
+    const hoy = await libreHoy(db, user, session.sessionDate);
+    const r = libreTip(paid.tip, hoy.mesas, hoy.propinas);
+    tip = r.tip;
+    libreInfo = { base: paid.tip, factor: r.factor, topeAlcanzado: r.topeAlcanzado, ...libreEstado({ mesas: hoy.mesas + 1, propinas: hoy.propinas + tip }) };
+  }
+  mesa.summary = {
+    stars, answered, total: mesa.steps.length, weak: weak.slice(0, 3), selfCheck: stars === null, tip, perfect,
+    modo, restauranteId: mesa.restauranteId ?? RESTAURANTE_BASE, ...(libreInfo ? { libre: libreInfo } : {}),
+  };
+  let out;
+  if (libre) {
+    // Servicio libre: propina con curva y tope; no cuenta para la meta diaria, la racha ni el nivel.
+    await award(db, user.id, `mesa_libre:${session.sessionDate}:${mesa.id}:${tip}`, { coins: tip }, now);
+    out = { rewards: noRewards(), plan: planOf(session.state.practice), progress: progressOf(await mesaStats(db, user)), levelUp: false };
+  } else {
+    tables.count += 1;
+    const before = levelFor((await mesaStats(db, user)).done).level;
+    await award(db, user.id, `mesa_done:${session.sessionDate}:${mesa.id}:${tip}`, { coins: tip }, now);
+    const progress = progressOf(await mesaStats(db, user));
+    out = tables.count >= GOALS.tables
+      ? await settle(db, user, session, 'p_mesa', RULES.XP_SIMULATION, now)
+      : { rewards: noRewards(), plan: planOf(session.state.practice) };
+    out.progress = progress;
+    out.levelUp = progress.level > before;
+    const turno = tables.turno;
+    if (turno && mesa.turnoId === turno.id && turno.estado === 'abierto') {
+      turno.hechas += 1;
+      turno.estrellas.push(stars);
+      turno.propinas += tip;
+      turno.mesas.push({ id: mesa.id, scene: mesa.scene, cliente: mesa.persona.name, stars, tip, perfect, weak: weak.slice(0, 3).map((w) => w.en) });
+      if (turno.hechas >= turno.total) { turno.estado = 'cerrado'; turno.cierre = cerrarTurno(turno, mesa); }
+    }
+  }
   if (await grantAchievement(db, user.id, 'first_conversation', now)) out.rewards.achievements.push('first_conversation');
   const confirmIndex = mesa.steps.findIndex((s) => s.kind === 'confirm');
   if ((mesa.attempts[confirmIndex]?.stars ?? 0) >= 3 && await grantAchievement(db, user.id, 'confirmed_order', now)) out.rewards.achievements.push('confirmed_order');
   await save(db, user, session, now);
-  return { ...out, summary: mesa.summary };
+  return { ...out, summary: mesa.summary, modo, turno: publicTurno(tables.turno), comanda: comandaOf(mesa) };
 }
 
 // --- Pronunciar y escuchar ---
@@ -755,8 +1000,8 @@ const RANKING_HIDDEN = new Set(['prueba.piloto']);
 
 // Lo único que se muestra del aspecto: qué lleva puesto.
 function safeLook(json) {
-  const { animal, vest, hat, glasses, neck } = readEquipped(json);
-  return { animal, vest, hat, glasses, neck };
+  const { animal, look } = readEquipped(json);
+  return { animal, look };
 }
 
 /** Todas las cuentas activas compiten, también quien administra. Solo se expone nombre visible, racha y propinas. Los empates comparten puesto. */
@@ -792,6 +1037,56 @@ export function speechPersona(persona) {
     voice: VOICES.has(persona.voice) ? persona.voice : null,
     azure: AZURE_VOICES.has(persona.azure) ? persona.azure : null,
     style: accent && mood ? `${accent.prompt}, sounding ${mood.prompt}` : null,
-    rate: mood?.rate ?? null,
+    // El tipo de cliente (Servicio libre) puede fijar el ritmo; si no, lo pone el ánimo.
+    rate: (Object.hasOwn(PACES, persona.pace) ? PACES[persona.pace] : null) ?? mood?.rate ?? null,
   };
+}
+
+
+// --- Conversación: «Tus 5 de hoy» + repaso de las frases ya graduadas ---
+const convPhrase = (f) => ({ id: f.id, cat: f.cat, en: f.en, es: f.es, cue: f.cue, conector: f.conector });
+
+/** Lo que hay hoy: el pack, el ejercicio del día, el repaso y el estado de la jornada. Opciones falsas salen de otras frases. */
+export async function convHome(db, user, now) {
+  const session = await load(db, user, now);
+  const { practice } = session.state;
+  const conv = practice.conv;
+  const ids = packIds(conv);
+  const due = dueIds(conv, session.sessionDate);
+  return {
+    day: conv.day + 1, days: 5, dayKind: dayInfo(conv),
+    pack: ids ? ids.map((id) => convPhrase(FRASES_CONV_CUE[id])) : null,
+    packNumber: ids ? conv.packIdx + 1 : null, packTotal: Math.ceil(FRASES_CONV_CUE.length / 5),
+    review: due.map((id) => convPhrase(FRASES_CONV_CUE[id])),
+    // Frases de cualquier otro pack, solo para armar opciones falsas (nunca la respuesta correcta).
+    pool: FRASES_CONV_CUE.map((f) => ({ id: f.id, en: f.en, es: f.es })),
+    today: { packDone: conv.today.counted, reviewDone: conv.today.reviewCounted, best: conv.today.best },
+    learnedCount: Object.keys(conv.grad).length,
+    plan: planOf(practice),
+  };
+}
+
+/** Un intento hablado de una frase de hoy. El servidor da las estrellas (misma evaluación de voz que las Mesas). */
+export async function convAttempt(db, user, { index, heard, assessment }, now) {
+  const session = await load(db, user, now);
+  const { practice } = session.state;
+  const target = targetOf(practice.conv, index, session.sessionDate);
+  if (target == null) return { error: 'not_found', message: 'Esa frase no está en tu práctica de hoy.' };
+  const result = assessment ? assessedResult(target, assessment) : compareSpeech(target, heard ?? '');
+  recordAttempt(practice.conv, index, result.stars ?? 0, session.sessionDate);
+  await save(db, user, session, now);
+  return { result, best: practice.conv.today.best[index] };
+}
+
+/** Termina la pasada del pack ('pack') o el repaso ('repaso'). Paga XP una vez al día y, si el plan queda completo, la racha. */
+export async function convFinish(db, user, { kind, silent }, now) {
+  const session = await load(db, user, now);
+  const { practice } = session.state;
+  const today = session.sessionDate;
+  const out = kind === 'repaso' ? finishReview(practice.conv, today, { silent }) : finishPack(practice.conv, today, { silent });
+  if (!out.ok) return { error: 'not_ready', message: out.reason === 'few_attempts' ? `Di al menos ${out.need} frases en voz alta, o usa el modo silencioso.` : 'Todavía no hay nada que cerrar.' };
+  await save(db, user, session, now);
+  const settled = out.already ? { rewards: noRewards(), plan: planOf(practice) }
+    : await settle(db, user, session, kind === 'repaso' ? 'p_repaso' : 'p_conv', kind === 'repaso' ? RULES.XP_REVIEW : RULES.XP_LESSON, now);
+  return { ...out, ...settled, learned: Object.keys(practice.conv.grad).length };
 }

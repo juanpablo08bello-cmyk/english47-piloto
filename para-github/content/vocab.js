@@ -6,6 +6,7 @@ import { FOOD } from './vocab/food.js';
 import { ORDERING } from './vocab/order.js';
 import { SERVICE } from './vocab/service.js';
 import { CLOSING } from './vocab/closing.js';
+import { EXPRESARSE } from './vocab/expresarse.js';
 
 // Catalogo base de expresiones. Campos: id, en, es (significado en contexto),
 // phrase (frase de servicio; debe contener `en`), guest (ejemplo de cliente),
@@ -115,5 +116,5 @@ const BASE = [
 ];
 
 // Fuente unica del catalogo: Palabras, fichas, busqueda, lecciones y evaluador leen de aqui.
-export const VOCAB = applyAudit([...BASE, ...WELCOME, ...DRINKS, ...FOOD, ...ORDERING, ...SERVICE, ...CLOSING]);
+export const VOCAB = applyAudit([...BASE, ...WELCOME, ...DRINKS, ...FOOD, ...ORDERING, ...SERVICE, ...CLOSING, ...EXPRESARSE]);
 export const VOCAB_BY_ID = new Map(VOCAB.map((v) => [v.id, v]));

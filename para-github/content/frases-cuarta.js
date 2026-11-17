@@ -54,7 +54,7 @@ How many people are in your party? ; ¿Cuántas personas son en su grupo? ; How 
 Is it inside or on the patio? ; ¿Adentro o en la terraza? ; Is it=¿es?|inside=adentro|or=o|on the=en la|patio=terraza
 `,
   equipo: `
-I need a runner for table nine. ; Necesito alguien que lleve platos a la mesa nueve. ; I need=necesito|a runner=un corredor|for=para|table=mesa|nine=nueve
+I need a runner for table nine. ; Necesito alguien que lleve platos a la mesa nueve. ; I need=necesito|a runner=alguien que lleva platos|for=para|table=mesa|nine=nueve
 We are out of salmon tonight. ; Hoy se nos acabó el salmón. ; We are=estamos|out of=sin|salmon=salmón|tonight=esta noche
 Can you run this food for me? ; ¿Me llevas esta comida? ; Can you=¿puedes?|run=llevar rápido|this=esta|food=comida|for me=por mí
 Table seven wants the check. ; La mesa siete quiere la cuenta. ; Table=mesa|seven=siete|wants=quiere|the=la|check=cuenta

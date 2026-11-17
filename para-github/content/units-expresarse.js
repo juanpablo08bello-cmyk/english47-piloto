@@ -1,0 +1,68 @@
+// Hilo «Expresarse»: unidades 9 a 16. Tres microlecciones por unidad, cada una con su gramatica breve.
+// Los ejercicios de estas lecciones se generan a partir de su vocabulario (como en las unidades base).
+export const EXPRESARSE_UNITS = [
+  { id: 9, title: 'Charla con la mesa', goal: 'Conversar con naturalidad: de dónde son, el clima y Miami.', scenario: 'table_talk', lessons: [
+    { id: 'u9l1', title: 'De dónde son', difficulty: 1, vocab: ['tk_where_from', 'tk_first_time', 'tk_how_long'],
+      grammar: { title: 'Present continuous para visitas', text: 'Para preguntar por una estancia usa are + verbo con -ing: «Where are you visiting from?». Es más natural que «From where you are?», donde se pierde el orden de la pregunta.' } },
+    { id: 'u9l2', title: 'El clima', difficulty: 1, vocab: ['tk_hot_enough', 'tk_beautiful_weather', 'tk_chance_of_rain'],
+      grammar: { title: 'There is a chance of', text: '«There is a chance of rain» usa there is + sustantivo singular. Para hablar de lo que hay: «There is a breeze», «There are clouds». Es charla ligera: pocas palabras y una sonrisa.' } },
+    { id: 'u9l3', title: 'Miami y sus planes', difficulty: 2, vocab: ['tk_must_see', 'tk_rest_of_stay', 'tk_any_plans'],
+      grammar: { title: 'Enjoy + sustantivo', text: '«Enjoy» va seguido directamente de lo que se disfruta: «Enjoy the rest of your stay», «Enjoy your meal». No necesita «it» ni «to».' } },
+  ] },
+  { id: 10, title: 'Recomendar con razones', goal: 'Recomendar un plato con una razón concreta, sin presionar.', scenario: 'reasoned_rec', lessons: [
+    { id: 'u10l1', title: 'Conocer sus gustos', difficulty: 1, vocab: ['rc_in_the_mood', 'rc_something_light', 'rc_youll_love'],
+      grammar: { title: 'If + presente, you will', text: '«If you like seafood, you will love the snapper»: después de if va el presente, y el resultado va con will. No digas «If you will like».' } },
+    { id: 'u10l2', title: 'Dar la razón', difficulty: 2, vocab: ['rc_guests_love', 'rc_chefs_favorite', 'rc_pairs_well'],
+      grammar: { title: 'Because + razón', text: 'Una recomendación con razón convence más: «I recommend the snapper because it is fresh». Because va seguido de sujeto y verbo completos.' } },
+    { id: 'u10l3', title: 'Comparar dos platos', difficulty: 2, vocab: ['rc_the_difference', 'rc_cant_go_wrong', 'rc_personally'],
+      grammar: { title: 'Comparativos', text: 'Para comparar añade -er a adjetivos cortos: «lighter», «richer». Con adjetivos largos usa more: «more flavorful». Después, «than»: «The snapper is lighter than the pasta».' } },
+  ] },
+  { id: 11, title: 'Describir un plato', goal: 'Describir sabor, textura y cocción con palabras precisas.', scenario: 'describe_dish', lessons: [
+    { id: 'u11l1', title: 'Sabores', difficulty: 2, vocab: ['ds_tangy', 'ds_rich_creamy', 'ds_light_fresh'],
+      grammar: { title: 'Adjetivo con and', text: 'Une dos adjetivos con and y sin coma: «rich and creamy», «light and fresh». El adjetivo va después de is y no cambia de género ni de número.' } },
+    { id: 'u11l2', title: 'Texturas', difficulty: 2, vocab: ['ds_crispy_outside', 'ds_juicy', 'ds_smooth_silky'],
+      grammar: { title: 'On the outside, inside', text: '«Crispy on the outside and tender inside» describe dos partes del mismo plato. Usa on the outside para fuera y inside para dentro.' } },
+    { id: 'u11l3', title: 'Cocción y picante', difficulty: 3, vocab: ['ds_slow_cooked', 'ds_seared', 'ds_mild_side'],
+      grammar: { title: 'Participio como adjetivo', text: 'La cocción se dice con el participio: «seared», «slow-cooked». Antes del plato va is o are: «The scallops are seared». Si no sabes el nivel de picante, consulta a la cocina.' } },
+  ] },
+  { id: 12, title: 'Vender un extra sin presionar', goal: 'Sugerir un extra con amabilidad y aceptar un no con elegancia.', scenario: 'gentle_upsell', lessons: [
+    { id: 'u12l1', title: 'Ofrecer un extra', difficulty: 2, vocab: ['up_add_on', 'up_make_it_combo', 'up_few_dollars'],
+      grammar: { title: 'Would you like to + verbo', text: '«Would you like to add...?» ofrece sin presionar. Después de to va el verbo sin cambios: «to add», «to try». Con un sustantivo directo usa «Would you like some...?».' } },
+    { id: 'u12l2', title: 'Combinar con gusto', difficulty: 2, vocab: ['up_great_to_share', 'up_goes_great', 'up_to_go_with_it'],
+      grammar: { title: 'Can I suggest', text: '«Can I suggest a glass of red wine?» suena a consejo, no a venta. Después de suggest va el sustantivo o un -ing: «Can I suggest trying the truffle sauce?».' } },
+    { id: 'u12l3', title: 'Aceptar un no', difficulty: 2, vocab: ['up_no_pressure', 'up_just_let_me_know', 'up_all_set'],
+      grammar: { title: 'Imperativo suave', text: '«Just let me know» es una orden amable: el «just» la suaviza. Aceptar un no con una sonrisa hace que el cliente vuelva a pedir después.' } },
+  ] },
+  { id: 13, title: 'Resolver quejas con empatía', goal: 'Escuchar, mostrar empatía, ofrecer una solución real y escalar sin prometer.', scenario: 'empathy_complaint', lessons: [
+    { id: 'u13l1', title: 'Escuchar primero', difficulty: 2, vocab: ['em_completely_understand', 'em_frustrating', 'em_thanks_letting_know'],
+      grammar: { title: 'Thank you for + -ing', text: 'Después de for va el verbo con -ing: «Thank you for letting me know», «Thank you for waiting». No uses el infinitivo: «Thank you for to wait» es un error común.' } },
+    { id: 'u13l2', title: 'Ofrecer una solución', difficulty: 2, vocab: ['em_make_right', 'em_take_care', 'em_what_i_can_do'],
+      grammar: { title: 'Want to + verbo', text: '«I want to make this right» muestra intención. Después de want to va el verbo sin cambios. Ofrece solo lo que está a tu alcance: si no lo autorizas tú, di que llamarás a tu gerente.' } },
+    { id: 'u13l3', title: 'Cerrar y dar seguimiento', difficulty: 3, vocab: ['em_how_sound', 'em_check_back', 'em_glad_told'],
+      grammar: { title: 'Will para promesas', text: '«I will check back with you» promete algo que sí puedes cumplir. Evita prometer compensaciones, descuentos o gratis: eso lo decide el gerente.' } },
+  ] },
+  { id: 14, title: 'Explicar demoras y cambios', goal: 'Dar tiempos honestos, explicar que algo se acabó y ofrecer alternativas.', scenario: 'delay_and_change', lessons: [
+    { id: 'u14l1', title: 'Tiempos de espera', difficulty: 2, vocab: ['dl_few_more', 'dl_ten_more', 'dl_cooked_to_order'],
+      grammar: { title: 'A few / about', text: '«A few more minutes» es vago pero amable; «about ten more minutes» da una cifra aproximada. Da siempre una cifra si la cocina la sabe: reduce la ansiedad de la mesa.' } },
+    { id: 'u14l2', title: 'Se acabó el plato', difficulty: 2, vocab: ['dl_ran_out', 'dl_how_about', 'dl_sold_out'],
+      grammar: { title: 'Pasado con ran out', text: '«We just ran out of the snapper» usa el pasado de run out: ran. Después de out of va el sustantivo. Siempre ofrece una alternativa con «How about...?».' } },
+    { id: 'u14l3', title: 'Cambios y avisos', difficulty: 2, vocab: ['dl_move_table', 'dl_keep_updated', 'dl_bear_with_me'],
+      grammar: { title: 'May I + verbo', text: '«May I move you to another table?» es una petición muy cortés. Después de may I va el verbo sin cambios. Es más formal que «Can I».' } },
+  ] },
+  { id: 15, title: 'Eventos, cumpleaños y grupos grandes', goal: 'Atender celebraciones y grupos grandes con coordinación y calidez.', scenario: 'birthday_group', lessons: [
+    { id: 'u15l1', title: 'Cumpleaños', difficulty: 2, vocab: ['ev_special_occasion', 'ev_candle', 'ev_sing'],
+      grammar: { title: 'Celebrating + ocasión', text: '«Are you celebrating a special occasion?» usa el presente continuo. Para felicitar: «Happy birthday!», «Congratulations!». Ofrece sin imponer: «Would you like us to...?».' } },
+    { id: 'u15l2', title: 'Grupos grandes', difficulty: 2, vocab: ['ev_large_party', 'ev_set_menu', 'ev_pre_order'],
+      grammar: { title: 'For + grupo', text: '«For a large party, we recommend...» abre con for + el grupo. Antes de prometer un menú o un cargo, confirma la política del local.' } },
+    { id: 'u15l3', title: 'Coordinar la mesa', difficulty: 3, vocab: ['ev_family_style', 'ev_all_at_once', 'ev_host_of_table'],
+      grammar: { title: 'Can + verbo', text: '«The kitchen can bring all the plates out at once» usa can + verbo sin to para decir lo que es posible. Si no estás seguro, di «Let me check with the kitchen».' } },
+  ] },
+  { id: 16, title: 'Despedirse y fidelizar', goal: 'Despedirte con calidez, pedir una reseña sin presionar e invitar a volver.', scenario: 'goodbye_loyalty', lessons: [
+    { id: 'u16l1', title: 'Agradecer', difficulty: 1, vocab: ['lt_hope_enjoyed', 'lt_pleasure_serving', 'lt_next_time'],
+      grammar: { title: 'Hope + pasado', text: '«I hope you enjoyed it» usa el pasado después de hope cuando habla de lo que ya ocurrió. Con el futuro: «I hope to see you again».' } },
+    { id: 'u16l2', title: 'Reseñas y propina', difficulty: 2, vocab: ['lt_leave_review', 'lt_feedback', 'lt_any_service_charge'],
+      grammar: { title: 'We would love it if', text: '«We would love it if you could leave us a review» pide con suavidad. No presiones: invita una sola vez. La propina depende de la política del local; si hay cargo, aparece en la cuenta.' } },
+    { id: 'u16l3', title: 'Invitar a volver', difficulty: 2, vocab: ['lt_make_reservation', 'lt_email_list', 'lt_take_card'],
+      grammar: { title: 'Would you like to + verbo', text: '«Would you like to join our email list?» invita sin forzar. Termina con una despedida cálida y deja la puerta abierta: «Hope to see you again soon».' } },
+  ] },
+];

@@ -1,6 +1,9 @@
 // Diccionario VIP: todas las palabras del restaurante en tablas largas, para consultar y para los juegos de Temas.
 // Cada línea: inglés | cómo suena | español. Los verbos: presente | suena | pasado | suena | español | d si dobla consonante.
 // La pronunciación es una ayuda aproximada: lo que se aprende es la palabra en inglés.
+import { TABLAS_RESTAURANTE } from './dic/restaurante.js';
+import { TABLAS_COTIDIANO } from './dic/cotidiano.js';
+import { TABLAS_EXPRESARSE } from './dic/expresarse.js';
 const words = (text) => text.trim().split('\n').map((line) => {
   const [en, pron, es] = line.split('|').map((x) => x.trim());
   return { en, pron, es };
@@ -164,7 +167,7 @@ hurry|jári|hurried|járid|apurarse
   };
 });
 
-export const VIP_TABLES = [
+const BASE_TABLES = [
   { id: 'verbos', title: 'Verbos', desc: 'Presente, pasado y futuro. Los dorados son irregulares: su pasado se aprende de memoria.', kind: 'verbs', rows: VERBS },
   { id: 'bienvenidas', title: 'Bienvenidas', desc: 'Para recibir y hacer sentir bien al cliente.', rows: words(`
 Welcome|uélcom|bienvenidos
@@ -788,6 +791,19 @@ reset the table|risét de téibol|volver a poner la mesa
 the kitchen is closed|de quíchen is clóusd|la cocina ya cerró
 last call|last col|última llamada (bar)
 `) },
+];
+
+// Tablas por grupo (restaurante / cotidiano / expresarse). Línea: inglés | cómo suena | español | nivel 1-4.
+const grouped = (list) => list.map(({ text, ...t }) => ({
+  ...t,
+  rows: text.trim().split(String.fromCharCode(10)).map((line) => {
+    const [en, pron, es, nivel] = line.split('|').map((x) => x.trim());
+    return { en, pron, es, nivel: Math.min(4, Math.max(1, Number(nivel) || 2)) };
+  }),
+}));
+export const VIP_TABLES = [
+  ...BASE_TABLES.map((t) => ({ grupo: 'restaurante', ...t })),
+  ...grouped(TABLAS_RESTAURANTE), ...grouped(TABLAS_COTIDIANO), ...grouped(TABLAS_EXPRESARSE),
 ];
 
 export const VIP_BY_ID = new Map(VIP_TABLES.map((t) => [t.id, t]));

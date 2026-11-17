@@ -1,6 +1,7 @@
-// Ocho unidades, tres microlecciones por unidad y un reto final (simulacion).
+// Dieciseis unidades (8 base + 8 del hilo «Expresarse»), con un reto final (simulacion) por unidad.
 // La gramatica vive aqui: explicaciones breves, seguidas de practica contextual.
 import { EXTRA_LESSONS } from './lessons-extra.js';
+import { EXPRESARSE_UNITS } from './units-expresarse.js';
 
 export { CATEGORIES } from './categories.js';
 
@@ -71,7 +72,7 @@ const BASE_UNITS = [
   ] },
 ];
 
-export const UNITS = BASE_UNITS.map((u) => ({ ...u, lessons: [...u.lessons, ...EXTRA_LESSONS[u.id]] }));
+export const UNITS = [...BASE_UNITS.map((u) => ({ ...u, lessons: [...u.lessons, ...EXTRA_LESSONS[u.id]] })), ...EXPRESARSE_UNITS];
 
 export const LESSONS = UNITS.flatMap((u) => u.lessons.map((l) => ({ ...l, unit: u.id })));
 export const LESSON_BY_ID = new Map(LESSONS.map((l) => [l.id, l]));

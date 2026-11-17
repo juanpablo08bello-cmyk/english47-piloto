@@ -22,6 +22,15 @@ export const CATEGORY_LIST = [
   { key: 'problems', name: 'Demoras, errores, quejas y escalamiento', unit: 7 },
   { key: 'check', name: 'Cuenta, pagos, recibos y despedida', unit: 8 },
   { key: 'togo', name: 'Pedidos para llevar', unit: 8 },
+  // Hilo «Expresarse»: unidades 9 a 16.
+  { key: 'talk', name: 'Charla con la mesa: lugar de origen, clima y Miami', unit: 9 },
+  { key: 'recommend', name: 'Recomendar con razones', unit: 10 },
+  { key: 'describe', name: 'Describir platos: sabor, textura y cocción', unit: 11 },
+  { key: 'upsell', name: 'Sugerir extras sin presionar', unit: 12 },
+  { key: 'empathy', name: 'Quejas: empatía y soluciones', unit: 13 },
+  { key: 'delays', name: 'Demoras, agotados y cambios', unit: 14 },
+  { key: 'events', name: 'Eventos, cumpleaños y grupos grandes', unit: 15 },
+  { key: 'loyalty', name: 'Despedida, reseñas y fidelización', unit: 16 },
 ];
 
 export const CATEGORIES = CATEGORY_LIST.map((c) => c.name);

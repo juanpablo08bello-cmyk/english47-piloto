@@ -94,16 +94,13 @@ test('las cuatro cuentas compiten en el ranking, también la que administra', as
   const juan = (await entrar(app, 'juan08x', 'password123')).api;
   assert.equal((await alejandro('GET', '/api/ranking')).data.total, 4);
   for (let i = 0; i < 2; i++) {
-    await juan('POST', '/api/aprender/generar');
-    await juan('POST', '/api/aprender/terminar');
     const { mesa } = (await juan('POST', '/api/mesas/generar')).data;
     for (const [index, step] of mesa.steps.entries()) await juan('POST', `/api/mesas/${mesa.id}/turno`, { index, heard: step.say.en });
     await juan('POST', `/api/mesas/${mesa.id}/terminar`);
   }
-  for (let i = 0; i < 2; i++) {
-    const { item } = (await juan('POST', '/api/mejorar/generar', { modo: 'escuchar' })).data;
-    await juan('POST', '/api/mejorar/intento', { id: item.id, heard: item.en });
-  }
+  const conv = (await juan('GET', '/api/conversacion')).data;
+  for (const f of conv.pack) await juan('POST', '/api/conversacion/intento', { index: f.id, heard: f.en });
+  await juan('POST', '/api/conversacion/terminar', { kind: 'pack' });
   const mine = (await juan('GET', '/api/ranking')).data;
   assert.deepEqual(mine.me, { streak: 1, tips: 1 });
   assert.equal(mine.streak[0].value, 1);
@@ -123,8 +120,8 @@ test('el regalo de 5.000 monedas llega una sola vez a Juan08X, a nadie más, y n
   assert.equal((await otro('GET', '/api/today')).data.stats.coins, 0);
   const buy = await juan('POST', '/api/shop/buy', { itemId: 'animal_lion', requestId: 'r' });
   assert.equal(buy.status, 200);
-  assert.equal(buy.data.stats.coins, 4200, 'gastar no lo vuelve a regalar');
-  assert.equal((await juan('GET', '/api/today')).data.stats.coins, 4200);
+  assert.equal(buy.data.stats.coins, 4100, 'gastar no lo vuelve a regalar');
+  assert.equal((await juan('GET', '/api/today')).data.stats.coins, 4100);
   const rank = (await otro('GET', '/api/ranking')).data;
   assert.deepEqual(rank.tips.map((r) => r.value), [0, 0]);
   assert.deepEqual(rank.streak.map((r) => r.value), [0, 0]);

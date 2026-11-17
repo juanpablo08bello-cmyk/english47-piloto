@@ -59,22 +59,30 @@ export function connectPostgres(connectionString, maxConnections = 5) {
   };
 }
 
+// Migraciones del esquema privado, en orden. Cada una es transaccional y se anota en schema_versions.
+//   1  001-pilot.sql   esquema del piloto
+//   2  002-menus.sql   menu propio de Mesas 2.0 (tabla menu_items)
+const MIGRATIONS = [{ version: 1, file: './001-pilot.sql' }, { version: 2, file: './002-menus.sql' }];
+export const LATEST_SCHEMA = MIGRATIONS.at(-1).version;
+
 export async function installSchema(db) {
-  const schema = await readFile(new URL('./001-pilot.sql', import.meta.url), 'utf8');
   await db.transaction(async () => {
     await db.lock(-47);
     await db.query('CREATE SCHEMA IF NOT EXISTS english47');
     await db.query('REVOKE ALL ON SCHEMA english47 FROM PUBLIC');
     await db.query('CREATE TABLE IF NOT EXISTS english47.schema_versions (version integer primary key)');
     const { rows } = await db.query('SELECT max(version) v FROM english47.schema_versions');
-    if (rows[0].v === 1) return;
-    if (rows[0].v !== null) throw Error('Versión de esquema no compatible.');
-    await db.query(schema);
-    await db.query('INSERT INTO english47.schema_versions VALUES (1)');
+    const current = rows[0].v ?? 0;
+    if (current > LATEST_SCHEMA) throw Error('Versión de esquema no compatible.');
+    for (const migration of MIGRATIONS.filter((m) => m.version > current)) {
+      await db.query(await readFile(new URL(migration.file, import.meta.url), 'utf8'));
+      await db.query('INSERT INTO english47.schema_versions VALUES ($1)', [migration.version]);
+    }
   });
 }
 
+/** El servidor arranca con la versión 1 (piloto) o la 2 (con menú propio). Las funciones de la 2 avisan si falta. */
 export async function verifySchema(db) {
   const { rows } = await db.query('SELECT max(version) v FROM english47.schema_versions');
-  if (rows[0].v !== 1) throw Error('Se requiere la migración de PostgreSQL del piloto.');
+  if (!(rows[0].v >= 1 && rows[0].v <= LATEST_SCHEMA)) throw Error('Se requiere la migración de PostgreSQL del piloto.');
 }

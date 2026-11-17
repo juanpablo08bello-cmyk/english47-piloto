@@ -128,3 +128,11 @@ export function createLoginLimiter({ max = 6, windowMs = 15 * 60 * 1000 } = {}) 
     clear(key) { hits.delete(key); },
   };
 }
+
+/** ¿La invitación sirve? Solo revela si es válida y su etiqueta (para quién es); nada más. */
+export async function inspectInvitation(db, code, nowMs) {
+  const inv = await db.prepare(
+    'SELECT label FROM invitations WHERE code_hash=? AND used_by IS NULL AND revoked=0 AND expires_at>?',
+  ).get(sha(String(code || '').trim()), nowMs);
+  return inv ? { valid: true, label: inv.label ?? null } : { valid: false, label: null };
+}

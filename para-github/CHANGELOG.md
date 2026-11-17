@@ -1,5 +1,18 @@
 # Registro de cambios
 
+## Sin versión (16/11/2026)
+
+Diccionario de ~3.100 palabras por temas y niveles, 223 escenas de Mesas, 16 unidades, 48 packs de Conversación, importador de cartas (foto, PDF, link, QR) y sección «Ceviches by Divino Miami Beach» con su carta real. Ver docs/reforma/43-divino-y-contenido.md.
+
+## Sin publicar: Mesas 2.0 en el servidor
+
+- **Turno y Servicio libre** (`POST /api/mesas/generar { modo }`). El Turno es una noche de 3 a 5 mesas con reseña final; solo sus mesas cuentan para la meta diaria, el nivel y la racha. El Servicio libre es infinito, con propina de curva decreciente y tope diario (60), y no suma racha.
+- **5 locales** con carta y vocabulario propios (Café, Brunch, Steakhouse, Rooftop, Hotel), desbloqueo por mesas atendidas.
+- **Dificultad y tipo de cliente** en Servicio libre (turista, ejecutivo, vip, familia, influencer).
+- **Comanda en vivo** en cada respuesta de turno, con la orden comprobada por `server/order.js` al confirmar.
+- **Menú propio** (hasta 60 platos, formulario o CSV pegado) y migración nueva `002-menus.sql` (PostgreSQL, versión 2) / esquema SQLite v4. **No aplicada a producción: hacer `pg_dump` antes.**
+- Contrato completo en `docs/reforma/31-api-mesas.md`.
+
 ## 1.3.0
 
 - Rediseño y repaso de todas las secciones:

@@ -1,17 +1,17 @@
 import { pilotWavSeconds } from './voice/wav.js';
 // Servidor HTTP sin framework: rutas pequenas y explicitas, todas filtradas por usuario.
 import { createServer } from 'node:http';
-import { createReadStream, statSync } from 'node:fs';
+import { createReadStream, existsSync, statSync } from 'node:fs';
 import { extname, join, normalize as normalizePath, resolve, sep } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import {
   createInvitation, createLoginLimiter, createSession, destroySession, activeStudents,
-  MAX_STUDENTS, pendingStudentInvites, redeemInvitation, userFromToken, verifyPassword, MIN_PASSWORD, setPassword, temporaryPassword,
+  MAX_STUDENTS, pendingStudentInvites, redeemInvitation, inspectInvitation, userFromToken, verifyPassword, MIN_PASSWORD, setPassword, temporaryPassword,
 } from './auth.js';
 import { addDays, isValidTimeZone, localDate, localHour } from './dates.js';
 import { tx } from './db.js';
 import {
-  ACHIEVEMENTS, award, balance, buyItem, calendar, grantAchievement, nextReward, ownedItems, readEquipped, reconcileShields, RULES, SHOP_ITEMS, streakStats, writeEquipped, xpLevel,
+  ACHIEVEMENTS, award, balance, buyItem, calendar, grantAchievement, grantEarnedItems, nextReward, ownedItems, readEquipped, reconcileShields, RULES, SHOP_ITEMS, EQUIP_SLOTS, streakStats, writeEquipped, xpLevel,
 } from './progress.js';
 import {
   answerExercise, finishTalkStep, getSession, linkSimulation, markCardsSeen, noteTalkTurn, publicSession, startBrief,
@@ -23,18 +23,24 @@ import {
   closeAbandoned, countStoredQuotes, createSim, finishSim, hintFor, publicSim, removeStoredQuotes, rephrase, retryAttempt, setComfort, takeTurn,
 } from './sim/engine.js';
 import { checkLimit, logUsage, usageReport, voiceStatus } from './voice/index.js';
-import { currentMesa, finishLearn, finishMesa, generateImprove, generateLearn, generateMesa, getPlan, improveAttempt, finishGame, generateGame, improveHome, leaderboard, learnHome, mesaProgress, vipTables, mesaTurn, speechPersona, speechTarget, judgeContext } from './practice.js';
+import { convAttempt, convFinish, convHome, currentMesa, finishLearn, finishMesa, generateImprove, generateLearn, generateMesa, getPlan, improveAttempt, finishGame, generateGame, improveHome, leaderboard, learnHome, mesaProgress, vipTables, mesaTurn, speechPersona, speechTarget, judgeContext } from './practice.js';
 import { ProviderError } from './voice/providers.js';
+import { ALERGENOS, CATEGORIAS, MAX_PLATOS, borrarMenu, borrarPlato, csvAPlatos, guardarPlatos, listarMenu, menusDisponibles, requisitosMenu, validarPlatos } from './menus.js';
 import { seasonGift, seasonKey, seasonStart } from './season.js';
 import { VOCAB, VOCAB_BY_ID } from '../content/vocab.js';
 import { LESSON_BY_ID, UNITS, CATEGORIES } from '../content/units.js';
 import { SCENARIOS, SCENARIO_BY_ID } from '../content/scenarios.js';
 import { MENU } from '../content/menu.js';
+import { DIVINO_MENU, DIVINO_SECCIONES, demoDivino } from '../content/divino.js';
+import { DIVINO_INFO, DIVINO_GLOSARIO } from '../content/divino-es.js';
+import { MAX_ARCHIVO, descargar, extractorClaude, leerEntrada } from './menu-import.js';
 import { publicDiagnostic, scoreDiagnostic } from '../content/diagnostic.js';
 import { APP_VERSION } from '../content/version.js';
 
 const COOKIE = 'e47_session';
-const PUBLIC_DIR = resolve('public');
+// Cliente que se sirve: por defecto el actual (public/). CLIENT_DIR=web/dist sirve el cliente nuevo (reforma 2.0).
+// Si existe el cliente nuevo compilado (web/dist), se sirve ese; si no, el anterior.
+const PUBLIC_DIR = resolve(process.env.CLIENT_DIR || (existsSync(resolve('web/dist/index.html')) ? 'web/dist' : 'public'));
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2', '.webmanifest': 'application/manifest+json' };
 const MAX_JSON = 64 * 1024;
 const MAX_AUDIO = 10 * 1024 * 1024;
@@ -46,10 +52,11 @@ const JOB_CHALLENGES = [
 ];
 
 class HttpError extends Error {
-  constructor(status, code, message) {
+  constructor(status, code, message, extra = null) {
     super(message);
     this.status = status;
     this.code = code;
+    this.extra = extra;
   }
 }
 
@@ -93,10 +100,10 @@ export function createApp({ db, config, services, clock = Date.now }) {
     const re = new RegExp(`^${pattern.replace(/:(\w+)/g, (_, k) => { keys.push(k); return '([^/]+)'; })}$`);
     routes.push({ method, re, keys, handler, auth: opts.auth ?? 'user', raw: opts.raw ?? false });
   };
-  const fail = (status, code, message) => { throw new HttpError(status, code, message); };
+  const fail = (status, code, message, extra) => { throw new HttpError(status, code, message, extra); };
   const fromResult = (r, status = 400) => {
     if (r?.error) {
-      const map = { not_found: 404, limit_reached: 429, ai_unavailable: 409, finished: 409, provider_auth: 502, provider_network: 502, provider_provider: 502, provider_rate_limited: config.pilotFree ? 429 : 502, provider_refused: 502 };
+      const map = { not_found: 404, locked: 403, conflict: 409, menu_incompleto: 409, unavailable: 503, too_many: 409, limit_reached: 429, ai_unavailable: 409, finished: 409, provider_auth: 502, provider_network: 502, provider_provider: 502, provider_rate_limited: config.pilotFree ? 429 : 502, provider_refused: 502 };
       fail(map[r.error] ?? status, r.error, r.message);
     }
     return r;
@@ -150,6 +157,17 @@ export function createApp({ db, config, services, clock = Date.now }) {
     limiter.clear(key);
     setSession(req, res, await createSession(db, user.id, now));
     return { user: userPublic(user) };
+  }, { auth: 'none' });
+
+  // La pantalla de invitación pregunta si el código sirve y para quién es. Con el mismo límite de intentos que el login,
+  // para que no se pueda usar como adivinador de códigos.
+  route('GET', '/api/auth/invitation/:code', async ({ req, params }) => {
+    const now = clock();
+    const key = `${req.socket.remoteAddress}:invitation`;
+    if (limiter.blocked(key, now)) fail(429, 'too_many', 'Demasiados intentos. Espera unos minutos.');
+    const r = await inspectInvitation(db, params.code, now);
+    if (!r.valid) limiter.fail(key, now);
+    return r;
   }, { auth: 'none' });
 
   route('POST', '/api/auth/redeem', async ({ req, body, res }) => {
@@ -409,7 +427,7 @@ export function createApp({ db, config, services, clock = Date.now }) {
       dueCount: known.filter((p) => p.due_date <= today).length,
       pendingCount: known.filter(isPendingConsolidation).length,
       entries: filtered.slice(offset, offset + limit).map((v) => ({
-        id: v.id, en: v.en, es: v.es, category: v.category, difficulty: v.difficulty,
+        id: v.id, en: v.en, es: v.es, pron: v.pron || '', category: v.category, difficulty: v.difficulty,
         favorite: favs.has(v.id), ...vocabStatus(progress.get(v.id), today),
       })),
       phrases: await db.prepare('SELECT id, en, es FROM personal_phrases WHERE user_id=? ORDER BY id DESC').all(user.id),
@@ -447,11 +465,12 @@ export function createApp({ db, config, services, clock = Date.now }) {
     const today = localDate(now, user.timezone);
     const rng = seededRng(`${user.id}:${now}`);
     const vocabId = new URL(req.url, 'http://x').searchParams.get('vocab');
-    const types = ['listen_choose', 'complete', 'recall', 'respond', 'repeat'];
+    // Sin escribir: solo se escucha y se elige (los ejercicios con teclado ya no se ofrecen).
+    const types = ['listen_choose', 'complete'];
     // Practicar una sola expresion desde su ficha.
     if (vocabId) {
       if (!VOCAB_BY_ID.has(vocabId)) fail(404, 'not_found', 'Esa expresión no existe.');
-      return { exercises: ['listen_choose', 'recall', 'respond'].map((t) => publicExercise(buildExercise(t, vocabId, rng))) };
+      return { exercises: ['listen_choose', 'complete', 'listen_choose'].map((t) => publicExercise(buildExercise(t, vocabId, rng))) };
     }
     const due = (await db.prepare(
       `SELECT vocab_id id FROM vocab_progress WHERE user_id=? ORDER BY (due_date<=?) DESC, lapses DESC, due_date LIMIT 5`,
@@ -621,6 +640,17 @@ export function createApp({ db, config, services, clock = Date.now }) {
     const now = clock();
     return await practiceOut(user, now, fromResult(await finishLearn(db, user, now)));
   });
+  // Conversación: «Tus 5 de hoy» y el repaso de las frases ya aprendidas.
+  route('GET', '/api/conversacion', async ({ user }) => await convHome(db, user, clock()));
+  route('POST', '/api/conversacion/intento', async ({ user, body }) => {
+    const now = clock();
+    return fromResult(await convAttempt(db, user, { index: Number(body.index), heard: String(body.heard ?? '').slice(0, 300) }, now));
+  });
+  route('POST', '/api/conversacion/terminar', async ({ user, body }) => {
+    const now = clock();
+    const out = fromResult(await convFinish(db, user, { kind: body.kind === 'repaso' ? 'repaso' : 'pack', silent: Boolean(body.silent) }, now));
+    return await practiceOut(user, now, out);
+  });
   route('GET', '/api/vip', async () => vipTables());
   route('POST', '/api/aprender/tema', async ({ user, body }) => fromResult(await generateGame(db, user, clock(), String(body.tema ?? ''))));
   route('POST', '/api/aprender/tema/terminar', async ({ user }) => {
@@ -629,7 +659,84 @@ export function createApp({ db, config, services, clock = Date.now }) {
   });
   route('GET', '/api/ranking', async ({ user }) => await leaderboard(db, user, clock()));
   route('GET', '/api/mesas', async ({ user }) => await currentMesa(db, user, clock()));
-  route('POST', '/api/mesas/generar', async ({ user }) => await generateMesa(db, user, clock()));
+  // Cuerpo opcional: { modo: 'turno' | 'libre', restauranteId, dificultad, cliente }. Sin cuerpo es un Turno en Harbor 47, como siempre.
+  route('POST', '/api/mesas/generar', async ({ user, body }) => fromResult(await generateMesa(db, user, clock(), Math.random, {
+    modo: body.modo, restauranteId: body.restauranteId, dificultad: body.dificultad, cliente: body.cliente,
+  })));
+
+  // --- Menu propio: solo lo ve su dueno. Ver docs/reforma/31-api-mesas.md ---
+  const needMenus = async () => { if (!(await menusDisponibles(db))) fail(503, 'unavailable', 'El menú propio todavía no está disponible en este servidor.'); };
+  const menuOut = async (user) => {
+    const platos = await listarMenu(db, user.id);
+    return { platos, total: platos.length, maximo: MAX_PLATOS, importar: true, ia: Boolean(menuExtractor), importarPorDia: IMPORTACIONES_POR_DIA, requisitos: requisitosMenu(platos), categorias: Object.keys(CATEGORIAS), alergenos: Object.keys(ALERGENOS) };
+  };
+  route('GET', '/api/mesas/menu', async ({ user }) => { await needMenus(); return await menuOut(user); });
+  route('POST', '/api/mesas/menu', async ({ user, body }) => {
+    await needMenus();
+    const mode = body.modo === undefined || body.modo === 'reemplazar' ? 'reemplazar' : body.modo === 'agregar' ? 'agregar' : null;
+    if (!mode) fail(400, 'bad_request', "El modo debe ser 'reemplazar' o 'agregar'.");
+    if ((body.csv === undefined) === (body.platos === undefined)) fail(400, 'bad_request', 'Envía "platos" (lista) o "csv" (texto pegado), uno de los dos.');
+    let list = body.platos;
+    if (body.csv !== undefined) {
+      const parsed = csvAPlatos(body.csv);
+      if (parsed.error) fail(400, 'invalid_menu', parsed.error);
+      list = parsed.platos;
+    }
+    if (Array.isArray(list) && list.length > MAX_PLATOS) fail(400, 'too_many', `Un menú tiene como máximo ${MAX_PLATOS} platos (enviaste ${list.length}).`);
+    const check = validarPlatos(list);
+    if (!check.ok) fail(400, 'invalid_menu', `El menú tiene ${check.problemas.length} problema(s). ${check.problemas[0].mensaje}`, { problemas: check.problemas });
+    const saved = await guardarPlatos(db, user.id, check.platos, mode, clock(), { dryRun: body.soloValidar === true });
+    if (saved.error) fail(409, saved.error, saved.message);
+    return body.soloValidar === true ? { validado: true, platos: check.platos.map(({ key, cents, ...p }) => p), total: check.platos.length } : await menuOut(user);
+  });
+  // --- Ceviches by Divino Miami Beach: carta real de un restaurante de prueba, para estudiar y practicar en Mesas ---
+  route('GET', '/api/divino', async () => ({ info: DIVINO_INFO, glosario: DIVINO_GLOSARIO.map(([en, pron, es]) => ({ en, pron, es })), categorias: DIVINO_SECCIONES, platos: DIVINO_MENU }));
+
+  // --- Importar menú (foto / PDF / link / QR leído en el teléfono): borrador, nada se guarda hasta confirmar. ---
+  const IMPORTACIONES_POR_DIA = 3;
+  const menuExtractor = services.menuExtractor ?? (config.anthropicKey ? extractorClaude({ apiKey: config.anthropicKey, baseUrl: config.anthropicBaseUrl, model: config.menuModel || 'claude-sonnet-5-5' }) : null);
+  route('POST', '/api/mesas/menu/importar', async ({ user, req }) => {
+    await needMenus();
+
+    let body;
+    try { body = JSON.parse((await readBody(req, Math.ceil(MAX_ARCHIVO * 1.4))).toString('utf8') || '{}'); } catch (err) { if (err instanceof HttpError) throw err; fail(400, 'bad_request', 'El contenido no se pudo leer.'); }
+    // Demostración sin IA: la carta real de Ceviches by Divino como borrador (no gasta lecturas del día).
+    if (body?.demo === 'divino') return { borrador: true, demo: true, ...demoDivino(), descartados: 0, restantes: IMPORTACIONES_POR_DIA };
+    if (!menuExtractor) fail(503, 'unavailable', 'Leer fotos y links necesita la IA conectada. Puedes probar con la carta de ejemplo, pegar un CSV o escribirla a mano.');
+    const entrada = leerEntrada(body);
+    if (entrada.error) fail(400, 'bad_request', entrada.error);
+    const now = clock();
+    const hoy = localDate(now, user.timezone);
+    const usadas = (await db.prepare('SELECT COUNT(*) AS n FROM idempotency WHERE user_id=? AND key LIKE ?').get(user.id, `menuimp:${hoy}:%`))?.n ?? 0;
+    if (Number(usadas) >= IMPORTACIONES_POR_DIA) fail(429, 'limit_reached', `Ya importaste ${IMPORTACIONES_POR_DIA} menús hoy. Mañana puedes seguir, o edita el menú a mano.`);
+    let fuente = entrada;
+    if (entrada.link) {
+      const got = await descargar(entrada.link, { resolver: services.menuResolver, fetcher: services.menuFetch });
+      if (got.error) fail(400, 'bad_link', got.error);
+      fuente = got;
+    }
+    await db.prepare('INSERT INTO idempotency (user_id, key, response, created_at) VALUES (?,?,?,?)').run(user.id, `menuimp:${hoy}:${usadas + 1}`, '{}', new Date(now).toISOString());
+    let crudos;
+    try { crudos = await menuExtractor({ texto: fuente.texto, archivo: fuente.archivo }); } catch { fail(502, 'provider', 'No pudimos leer ese menú. Prueba con otra foto más nítida.'); }
+    const lista = Array.isArray(crudos) ? crudos.slice(0, MAX_PLATOS) : [];
+    const buenos = []; const descartados = [];
+    lista.forEach((p) => { const one = validarPlatos([p]); if (one.ok && one.platos.length) buenos.push(one.platos[0]); else descartados.push(p?.plato ?? '?'); });
+    const check = validarPlatos(buenos.map(({ key, cents, ...rest }) => rest));
+    if (!check.platos.length) fail(422, 'empty_menu', 'No encontramos platos en esa imagen. Prueba con una foto más nítida o del menú completo.');
+    return { borrador: true, platos: check.platos.map(({ key, cents, ...p }) => p), total: check.platos.length, descartados: descartados.length, restantes: Math.max(0, IMPORTACIONES_POR_DIA - usadas - 1) };
+  }, { raw: true });
+  route('DELETE', '/api/mesas/menu/:id', async ({ user, params }) => {
+    await needMenus();
+    const id = Number(params.id);
+    if (!Number.isInteger(id)) fail(400, 'bad_request', 'Ese plato no existe.');
+    if (!(await borrarPlato(db, user.id, id))) fail(404, 'not_found', 'Ese plato no está en tu menú.');
+    return await menuOut(user);
+  });
+  route('DELETE', '/api/mesas/menu', async ({ user }) => {
+    await needMenus();
+    const removed = await borrarMenu(db, user.id);
+    return { borrados: removed, ...(await menuOut(user)) };
+  });
   route('POST', '/api/mesas/:id/turno', async ({ user, params, body }) => fromResult(await mesaTurn(db, user, Number(params.id), { index: Number(body.index), heard: body.heard, selfCheck: Boolean(body.selfCheck) }, clock())));
   route('POST', '/api/mesas/:id/terminar', async ({ user, params }) => {
     const now = clock();
@@ -682,11 +789,13 @@ export function createApp({ db, config, services, clock = Date.now }) {
         judgment = null; // Se califica con las reglas propias.
       }
     }
-    const out = fromResult(place.tipo === 'mesa'
-      ? await mesaTurn(db, user, place.id, { index: place.index, assessment, judgment }, now)
-      : await improveAttempt(db, user, { id: place.id, assessment, judgment }, now));
+    const out = fromResult(place.tipo === 'conv'
+      ? await convAttempt(db, user, { index: place.index, assessment }, now)
+      : place.tipo === 'mesa'
+        ? await mesaTurn(db, user, place.id, { index: place.index, assessment, judgment }, now)
+        : await improveAttempt(db, user, { id: place.id, assessment, judgment }, now));
     if (out.daily) out.daily.stats = await statsFor(user, now);
-    return { status: 'ok', heard: assessment.text, result: out.result, attempts: out.attempts ?? null, daily: out.daily ?? null };
+    return { status: 'ok', heard: assessment.text, result: out.result, attempts: out.attempts ?? null, daily: out.daily ?? null, comanda: out.comanda ?? null };
   }, { raw: true });
 
   route('POST', '/api/voice/speak', async ({ user, body, res }) => {
@@ -712,12 +821,16 @@ export function createApp({ db, config, services, clock = Date.now }) {
     } finally { res.off('close', cancel); }
   });
 
+  // Looks legendarios: se conceden solos al cumplir su logro.
+  const grantEarned = async (u, stats) => grantEarnedItems(db, u.id, { practicedTotal: Number(stats?.practicedTotal ?? 0), mesasHechas: (await mesaProgress(db, u)).done }, clock());
+
   // --- Perfil ---
   route('GET', '/api/profile', async ({ user }) => {
     const now = clock();
     const stats = await statsFor(user, now);
     const u = await fresh(user);
     const earned = new Map((await db.prepare('SELECT key, created_at FROM achievements WHERE user_id=? AND created_at>=?').all(u.id, seasonStart())).map((a) => [a.key, a.created_at]));
+    await grantEarned(u, stats);
     const unlocked = await ownedItems(db, u.id);
     const evidence = await db.prepare('SELECT task, COUNT(*) n FROM task_evidence WHERE user_id=? GROUP BY task').all(u.id);
     const counts = Object.fromEntries(evidence.map((e) => [e.task, e.n]));
@@ -743,7 +856,7 @@ export function createApp({ db, config, services, clock = Date.now }) {
       stats,
       calendar: await calendar(db, u.id, stats.today, 35),
       achievements: Object.entries(ACHIEVEMENTS).map(([key, a]) => ({ key, ...a, earnedAt: earned.get(key) ?? null })),
-      shop: SHOP_ITEMS.map((i) => ({ ...i, owned: unlocked.has(i.id) })),
+      shop: SHOP_ITEMS.map((i) => ({ ...i, owned: unlocked.has(i.id), available: true })),
       maxShields: RULES.MAX_SHIELDS,
       tasks: [
         { id: 'clarify', name: 'Pedir aclaraciones', evidence: counts.clarify ?? 0 },
@@ -774,20 +887,32 @@ export function createApp({ db, config, services, clock = Date.now }) {
   route('POST', '/api/shop/buy', async ({ user, body }) => {
     const r = await buyItem(db, user, body.itemId, body.requestId, clock());
     if (!r.ok) fail(400, r.code, r.message);
-    return { ...r, stats: await statsFor(user, clock()) };
+    const after = await statsFor(user, clock());
+    await grantEarned(user, after);
+    return { ...r, stats: after };
   });
   route('POST', '/api/avatar/equip', async ({ user, body }) => {
-    if (body.slot && !['vest', 'hat', 'glasses', 'neck', 'animal'].includes(body.slot)) fail(400, 'unknown_item', 'Ese accesorio no existe.');
-    const item = SHOP_ITEMS.find((i) => i.id === body.itemId && i.kind !== 'shield');
+    if (body.slot && !EQUIP_SLOTS.includes(body.slot)) fail(400, 'unknown_item', 'Ese accesorio no existe.');
     const u = await fresh(user);
     const equipped = readEquipped(u.equipped);
+    const lookAnimal = () => SHOP_ITEMS.find((i) => i.id === equipped.look)?.animal;
     if (body.slot && !body.itemId) {
       delete equipped[body.slot];
+      // Al volver a la capibara solo se conserva un look de la capibara.
+      if (body.slot === 'animal' && equipped.look && lookAnimal() !== 'animal_capybara') delete equipped.look;
     } else {
+      const item = SHOP_ITEMS.find((i) => i.id === body.itemId && i.kind !== 'shield');
       if (!item) fail(400, 'unknown_item', 'Ese accesorio no existe.');
-      const owned = (await ownedItems(db, u.id)).has(item.id);
-      if (!owned) fail(403, 'not_owned', 'Todavía no tienes ese accesorio.');
-      equipped[item.kind] = item.id;
+      const owned = await ownedItems(db, u.id);
+      if (!owned.has(item.id)) fail(403, 'not_owned', 'Todavía no tienes ese accesorio.');
+      if (item.kind === 'look') {
+        if (item.animal !== 'animal_capybara' && !owned.has(item.animal)) fail(403, 'not_owned', 'Primero necesitas a ese animal.');
+        equipped.look = item.id;
+        if (item.animal === 'animal_capybara') delete equipped.animal; else equipped.animal = item.animal;
+      } else {
+        equipped.animal = item.id;
+        if (equipped.look && lookAnimal() !== item.id) delete equipped.look;
+      }
     }
     await db.prepare('UPDATE users SET equipped=? WHERE id=?').run(writeEquipped(equipped), u.id);
     return { equipped };
@@ -932,7 +1057,7 @@ export function createApp({ db, config, services, clock = Date.now }) {
       if (out !== undefined) send(200, out);
     } catch (err) {
       if (!res.headersSent) res.removeHeader('Set-Cookie');
-      if (err instanceof HttpError) { send(err.status, { error: err.code, message: err.message }); return; }
+      if (err instanceof HttpError) { send(err.status, { error: err.code, message: err.message, ...(err.extra ?? {}) }); return; }
       console.error('Fallo de operación', err.code ?? err.name);
       send(500, { error: 'server_error', message: 'No pudimos confirmar esta operación. Revisa tu progreso y vuelve a intentarlo.' });
     }

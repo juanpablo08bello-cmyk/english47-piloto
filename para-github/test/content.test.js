@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { VOCAB, VOCAB_BY_ID } from '../content/vocab.js';
 import { LESSONS, UNITS, CATEGORIES } from '../content/units.js';
+import { CATEGORY_LIST } from '../content/categories.js';
 import { SCENARIOS, SCENARIO_BY_ID } from '../content/scenarios.js';
 import { MENU } from '../content/menu.js';
 import { DIAGNOSTIC } from '../content/diagnostic.js';
@@ -11,13 +12,13 @@ import { lessonExercises } from '../server/lessons.js';
 import { normalize, tokens, findPhrase } from '../server/text.js';
 
 test('catalogo: objetivos minimos frente a la base registrada', () => {
-  assert.equal(UNITS.length, 8);
-  for (const u of UNITS) assert.ok(u.lessons.length >= 6, u.title);
-  assert.ok(LESSONS.length >= 48);
+  assert.equal(UNITS.length, 16);
+  for (const u of UNITS) assert.ok(u.lessons.length >= (u.id <= 8 ? 6 : 3), u.title);
+  assert.ok(LESSONS.length >= 72);
   assert.ok(VOCAB.length >= 600, `hay ${VOCAB.length}`);
   const exercises = LESSONS.reduce((n, l) => n + lessonExercises(1, l).length, 0);
   assert.ok(exercises >= 240, `base 120, hay ${exercises}`);
-  assert.ok(SCENARIOS.length >= 16);
+  assert.ok(SCENARIOS.length >= 24);
 });
 
 test('vocabulario: identificadores unicos, campos completos, sin duplicados triviales', () => {
@@ -36,11 +37,15 @@ test('vocabulario: identificadores unicos, campos completos, sin duplicados triv
   }
 });
 
-test('vocabulario: las 22 categorias tienen contenido suficiente', () => {
-  assert.equal(CATEGORIES.length, 22);
+// Las 22 categorias base piden 20 expresiones; las 8 del hilo «Expresarse» (una por unidad) piden 9.
+const CATEGORY_BY_UNIT_MIN = (cat) => (CATEGORY_LIST.find((c) => c.name === cat).unit >= 9 ? 9 : 20);
+
+test('vocabulario: las 30 categorias tienen contenido suficiente', () => {
+  assert.equal(CATEGORIES.length, 30);
   for (const cat of CATEGORIES) {
     const n = VOCAB.filter((v) => v.category === cat).length;
-    assert.ok(n >= 20, `${cat}: ${n}`);
+    const min = CATEGORY_BY_UNIT_MIN(cat);
+    assert.ok(n >= min, `${cat}: ${n}`);
   }
   for (const v of VOCAB) assert.ok(CATEGORIES.includes(v.category), `${v.id}: ${v.category}`);
 });

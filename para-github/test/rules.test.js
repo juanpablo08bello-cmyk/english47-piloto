@@ -131,9 +131,9 @@ test('tienda: precio, tope de dos protectores y compra duplicada', async () => {
   assert.equal((await buyItem(db, u, 'shield', 'r2', now)).ok, true);
   assert.equal((await buyItem(db, u, 'shield', 'r3', now)).code, 'max_shields');
   assert.equal((await balance(db, u.id)).coins, 180);
-  assert.equal((await buyItem(db, u, 'hat_beret', null, now)).ok, true);
-  assert.equal((await buyItem(db, u, 'hat_beret', null, now)).duplicate, true);
-  assert.equal((await balance(db, u.id)).coins, 100);
+  assert.equal((await buyItem(db, u, 'look_capibara_03', null, now)).ok, true);
+  assert.equal((await buyItem(db, u, 'look_capibara_03', null, now)).duplicate, true);
+  assert.equal((await balance(db, u.id)).coins, 140);
 });
 
 test('repaso: intervalos 1-3-7-14-30 y un fallo adelanta', async () => {

@@ -2,6 +2,7 @@
 import { tx } from './db.js';
 import { addDays, diffDays, localDate, weekStart } from './dates.js';
 import { season, seasonKey, seasonStart } from './season.js';
+import { TIENDA_ITEMS } from '../content/tienda.js';
 
 export const RULES = {
   // Un día completo: 15 + 25 + 15 = 55 XP.
@@ -15,47 +16,13 @@ export const RULES = {
   WEEKLY_GOAL_DAYS: 4,
 };
 
+// La tienda: se compran animales y, por separado, los looks (fotos completas generadas en Flow) de CADA animal.
+// Un look solo sirve al animal para el que se compró; hace falta tener el animal. Catálogo generado por art/flow/exportar_looks.py.
 export const SHOP_ITEMS = [
   { id: 'shield', kind: 'shield', name: 'Protector de racha', price: RULES.SHIELD_PRICE, desc: 'Cubre un día perdido. Máximo dos guardados.' },
-  { id: 'animal_cat', kind: 'animal', name: 'Gato', price: 350, desc: 'Curioso y elegante.' },
-  { id: 'animal_dog', kind: 'animal', name: 'Perro', price: 350, desc: 'El mejor compañero de turno.' },
-  { id: 'animal_rabbit', kind: 'animal', name: 'Conejo', price: 400, desc: 'Rápido entre las mesas.' },
-  { id: 'animal_fox', kind: 'animal', name: 'Zorro', price: 450, desc: 'Astuto con las propinas.' },
-  { id: 'animal_panda', kind: 'animal', name: 'Panda', price: 500, desc: 'Tranquilo incluso con la casa llena.' },
-  { id: 'animal_monkey', kind: 'animal', name: 'Mono', price: 550, desc: 'Siempre de buen humor.' },
-  { id: 'animal_lion', kind: 'animal', name: 'León', price: 800, desc: 'El rey del salón.' },
-  { id: 'animal_tiger', kind: 'animal', name: 'Tigre', price: 800, desc: 'Atiende con garra.' },
-  { id: 'vest_green', kind: 'vest', name: 'Chaleco verde', price: 80, desc: '' },
-  { id: 'vest_blue', kind: 'vest', name: 'Chaleco azul', price: 80, desc: '' },
-  { id: 'vest_wine', kind: 'vest', name: 'Chaleco vino', price: 80, desc: '' },
-  { id: 'vest_red', kind: 'vest', name: 'Chaleco rojo', price: 100, desc: '' },
-  { id: 'vest_purple', kind: 'vest', name: 'Chaleco morado', price: 120, desc: '' },
-  { id: 'vest_pink', kind: 'vest', name: 'Chaleco rosa', price: 120, desc: '' },
-  { id: 'vest_sailor', kind: 'vest', name: 'Marinero', price: 160, desc: 'Listo para el puerto de Miami.' },
-  { id: 'vest_hawaii', kind: 'vest', name: 'Hawaiana', price: 180, desc: 'Muy Miami Beach.' },
-  { id: 'vest_chef', kind: 'vest', name: 'Chaqueta de chef', price: 200, desc: 'Para mandar en la cocina.' },
-  { id: 'vest_black', kind: 'vest', name: 'Esmoquin', price: 220, desc: 'Para la cena más elegante.' },
-  { id: 'vest_gold', kind: 'vest', name: 'Chaleco dorado', price: 350, desc: 'Solo para los que brillan.' },
-  { id: 'hat_beret', kind: 'hat', name: 'Boina', price: 80, desc: '' },
-  { id: 'hat_flower', kind: 'hat', name: 'Flor de hibisco', price: 80, desc: 'Muy Miami Beach.' },
-  { id: 'hat_cap', kind: 'hat', name: 'Gorra roja', price: 120, desc: '' },
-  { id: 'hat_party', kind: 'hat', name: 'Gorro de fiesta', price: 140, desc: '' },
-  { id: 'hat_headphones', kind: 'hat', name: 'Audífonos', price: 180, desc: '' },
-  { id: 'hat_cowboy', kind: 'hat', name: 'Sombrero vaquero', price: 220, desc: '' },
-  { id: 'hat_chef', kind: 'hat', name: 'Gorro de chef', price: 240, desc: '' },
-  { id: 'hat_top', kind: 'hat', name: 'Sombrero de copa', price: 280, desc: '' },
-  { id: 'hat_crown', kind: 'hat', name: 'Corona', price: 500, desc: 'Para quien va primero.' },
-  { id: 'glasses_round', kind: 'glasses', name: 'Lentes redondos', price: 60, desc: 'Para leer el menú con estilo.' },
-  { id: 'glasses_sun', kind: 'glasses', name: 'Lentes de sol', price: 120, desc: '' },
-  { id: 'glasses_heart', kind: 'glasses', name: 'Lentes de corazón', price: 160, desc: '' },
-  { id: 'glasses_star', kind: 'glasses', name: 'Lentes de estrella', price: 200, desc: '' },
-  { id: 'neck_blue', kind: 'neck', name: 'Moño azul', price: 60, desc: '' },
-  { id: 'neck_gold', kind: 'neck', name: 'Moño dorado', price: 120, desc: '' },
-  { id: 'neck_tie', kind: 'neck', name: 'Corbata', price: 120, desc: '' },
-  { id: 'neck_scarf', kind: 'neck', name: 'Bufanda', price: 150, desc: '' },
-  { id: 'neck_lei', kind: 'neck', name: 'Collar de flores', price: 180, desc: '' },
-  { id: 'neck_medal', kind: 'neck', name: 'Medalla', price: 300, desc: 'Para el campeón del turno.' },
+  ...TIENDA_ITEMS,
 ];
+export const EQUIP_SLOTS = ['animal', 'look'];
 
 export const ACHIEVEMENTS = {
   first_conversation: { name: 'Primera conversación', desc: 'Recorriste completa una simulación con un cliente, respondiendo a la situación.' },
@@ -231,6 +198,10 @@ export async function validatePracticeDay(db, user, kind, nowMs) {
 export async function buyItem(db, user, itemId, requestId, nowMs) {
   const item = SHOP_ITEMS.find((i) => i.id === itemId);
   if (!item) return { ok: false, code: 'unknown_item', message: 'Ese artículo no existe.' };
+  if (item.kind === 'look' && item.animal !== 'animal_capybara' && !(await ownedItems(db, user.id)).has(item.animal)) {
+    return { ok: false, code: 'need_animal', message: 'Primero compra ese animal para comprarle looks.' };
+  }
+  if (item.earn) return { ok: false, code: 'earned_only', message: `No se compra: se gana con un logro (${item.earn}).` };
   return await tx(db, async () => {
     const { coins } = await balance(db, user.id);
     if (item.kind === 'shield') {
@@ -265,4 +236,26 @@ export async function calendar(db, userId, today, days = 42) {
   return await db.prepare(
     'SELECT local_date date, status, full_done "fullDone", brief_done "briefDone" FROM streak_days WHERE user_id=? AND local_date>=? AND completed_at>=? ORDER BY local_date',
   ).all(userId, from, seasonStart());
+}
+
+// --- Looks legendarios: no se compran, se ganan. Se conceden solos al cumplir el logro (y tener al animal). ---
+export const EARN_RULES = {
+  'Racha de 14 días': (ctx) => ctx.practicedTotal >= 14,
+  'Nivel 4 en Mesas (20 mesas de Turno)': (ctx) => ctx.mesasHechas >= 20,
+};
+/** Concede los looks ganados. ctx: { practicedTotal, mesasHechas }. Devuelve los ids nuevos. Idempotente. */
+export async function grantEarnedItems(db, userId, ctx, nowMs) {
+  const owned = await ownedItems(db, userId);
+  const given = [];
+  for (const item of SHOP_ITEMS) {
+    if (!item.earn || owned.has(item.id)) continue;
+    const rule = EARN_RULES[item.earn];
+    if (!rule || !rule(ctx)) continue;
+    if (item.animal !== 'animal_capybara' && !owned.has(item.animal)) continue;
+    if (await award(db, userId, seasonKey(`shop:item:${item.id}`), {}, nowMs)) {
+      await db.prepare('INSERT INTO unlocks (user_id, item_id) VALUES (?,?) ON CONFLICT DO NOTHING').run(userId, item.id);
+      given.push(item.id);
+    }
+  }
+  return given;
 }

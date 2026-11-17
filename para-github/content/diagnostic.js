@@ -12,6 +12,14 @@ const WHY = {
   6: 'revisar la mesa y anticipar lo que necesitan',
   7: 'resolver quejas y escalar cuando corresponde',
   8: 'cerrar la mesa, dividir la cuenta y despedir',
+  9: 'conversar con la mesa: origen, clima y Miami',
+  10: 'recomendar con razones',
+  11: 'describir platos: sabor, textura y cocción',
+  12: 'sugerir extras sin presionar',
+  13: 'resolver quejas con empatía',
+  14: 'explicar demoras y cambios',
+  15: 'atender eventos y grupos grandes',
+  16: 'despedirte y fidelizar',
 };
 
 export const DIAGNOSTIC = [

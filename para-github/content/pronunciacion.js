@@ -64,6 +64,12 @@ Object.assign(WORDS, {
   price: 'práis', wings: 'uíngs', they: 'déi', tacos: 'tácos', cook: 'cuk', while: 'uáil',
   overcooked: 'overcúkt', came: 'quéim',
 });
+// Cartas de los locales (content/restaurantes.js): café, brunch, rooftop y hotel.
+Object.assign(WORDS, {
+  avocado: 'avocádo', wrap: 'rap', turkey: 'térki', sandwich: 'sánduich', burrito: 'burríto', pancake: 'pánqueik', stack: 'stak', french: 'french',
+  benedict: 'bénedict', omelet: 'ómlet', banana: 'banána', ham: 'jam', taco: 'táco', wing: 'uing', basket: 'básquet', flatbread: 'flátbred',
+  crispy: 'críspi', basil: 'básil', risotto: 'risóto', lobster: 'lóbster', filet: 'filé', mignon: 'miñón', mousse: 'mus', tender: 'ténder', creamy: 'crími',
+});
 export const missingWords = (text) => (String(text).match(WORD) ?? [])
   .map((w) => w.toLowerCase().replace(/’/g, "'"))
   .filter((w) => !Object.hasOwn(WORDS, w));
@@ -73,3 +79,76 @@ export function pronounce(text) {
   if (missingWords(text).length) return null;
   return String(text).replace(WORD, (w) => WORDS[w.toLowerCase().replace(/’/g, "'")]);
 }
+
+// Mesas ampliadas (wifi, niños, reservas, cierre).
+Object.assign(WORDS, {
+  wifi: 'uáifai', password: 'pásuord', find: 'fáind', kind: 'káind', size: 'sáis', candle: 'cándol', leave: 'liv', news: 'niús', use: 'yus', yet: 'yet',
+  stop: 'stop', phones: 'fóuns', closing: 'clóusing', closed: 'clóusd', write: 'ráit', writing: 'ráiting', down: 'dáun',
+});
+
+// Unidades 9 a 16 («Expresarse»): palabras de las opciones de las simulaciones.
+Object.assign(WORDS, {
+  why: 'uái', enough: 'inóf', sunrise: 'sánraiz', rest: 'rest', stay: 'stéi', because: 'bicós', difference: 'díferens', lighter: 'láiter', richer: 'ríquer',
+  either: 'íder', mild: 'máild', then: 'den', seared: 'síerd', golden: 'góulden', fire: 'fáier', add: 'ad', dollars: 'dólars', pressure: 'préshur',
+  suggest: 'sayést', set: 'set', completely: 'complítli', refunds: 'rífands', sound: 'sáund', ran: 'ran', wear: 'uér', jacket: 'yáquet',
+  wonderful: 'uánderful', mom: 'mom', occasion: 'okéishon', once: 'uáns', sing: 'sing', candles: 'cándols', serving: 'sérving',
+  enjoyed: 'enyóid', yeah: 'ye', means: 'minz', review: 'rivyú', next: 'nekst',
+});
+
+// Mesas nuevas (lote 1).
+Object.assign(WORDS, {
+  ahead: 'ajéd', anytime: 'énitaim', blocks: 'bloks', bowl: 'bóul', calling: 'cóling', carry: 'kári', cute: 'kiút', dog: 'dog', dogs: 'dogs', eight: 'éit', fit: 'fit', friend: 'frend',
+  fun: 'fan', goodnight: 'gudnáit', happens: 'jápens', heat: 'jit', hurt: 'jert', left: 'left', movie: 'múvi', nobody: 'nóubadi', open: 'óupen', parking: 'párking', pepper: 'péper',
+  restaurant: 'réstorant', shade: 'shéid', shady: 'shéidi', shall: 'shal', spanish: 'spánish', straight: 'stréit', street: 'strit', taxi: 'táksi', validate: 'válideit', walk: 'uok', works: 'uérks',
+});
+Object.assign(WORDS, { charge: 'charch', house: 'jáus' });
+
+// Mesas nuevas (lote 2).
+Object.assign(WORDS, {
+  bigger: 'bíguer', book: 'buk', bother: 'báder', cheaper: 'chíper', club: 'clab', costs: 'costs', cozy: 'cóusi', deposit: 'depósit', every: 'évri', fits: 'fits', her: 'jer', idea: 'aidía',
+  join: 'chóin', less: 'les', lips: 'lips', lovely: 'lávli', meanwhile: 'minuáil', opens: 'óupens', portion: 'pórshon', private: 'práivit', quiet: 'cuáiet', read: 'rid', relax: 'rilás',
+  sealed: 'sild', soft: 'soft', thirty: 'zérti', understanding: 'anderstánding', watch: 'uoch', waters: 'uóters', wherever: 'juerévar',
+});
+
+// Mesas nuevas (lote 3).
+Object.assign(WORDS, {
+  best: 'best', better: 'béter', calendar: 'cálendar', calm: 'cam', calmer: 'cámer', cancel: 'cánsel', canceled: 'cánseld', company: 'cámpani', dishes: 'díshis', everyone: 'évriuan',
+  excellent: 'ékselent', given: 'guíven', health: 'jelz', him: 'jim', honor: 'ónor', hours: 'áuers', invoice: 'ínvois', local: 'lóucal', machine: 'mashín', matters: 'máters',
+  milder: 'máilder', personally: 'pérsonali', prepare: 'pripér', print: 'print', relief: 'rilíf', replace: 'ripléis', service: 'sérvis', spell: 'spel', tomorrow: 'tumórou',
+  touch: 'tach', trouble: 'trábol', wearing: 'uérin', were: 'uer', wind: 'uind', worth: 'uérz',
+});
+
+// Mesas nuevas (lote 4).
+Object.assign(WORDS, {
+  ago: 'agóu', bank: 'bank', carefully: 'quérfuli', checking: 'chéquin', dangerous: 'déincheros', days: 'déis', discreet: 'discrít', everywhere: 'évriuer', faster: 'fáster', gift: 'guift',
+  groups: 'grups', guests: 'guests', happen: 'jápen', immediately: 'imídiatli', maybe: 'méibi', missing: 'mísing', napkin: 'nápkin', noise: 'nóis', offer: 'ófer', power: 'páuer',
+  refund: 'rífand', remove: 'rimúv', rule: 'rul', sandwiches: 'sánduichis', scan: 'scan', sir: 'ser', slip: 'slip', standard: 'stándard', terrible: 'térible',
+});
+
+// Mesas nuevas (lote 5).
+Object.assign(WORDS, {
+  appetit: 'apetí', baker: 'béiker', black: 'blak', bon: 'bon', christmas: 'crísmas', cool: 'cul', fast: 'fast', friday: 'fráidei', green: 'grin', holidays: 'jólideis', honey: 'jáni',
+  juices: 'chúsis', makes: 'méiks', merry: 'méri', oven: 'óven', past: 'past', quickly: 'cuíkli', recipe: 'résipi', secret: 'sícret', sharp: 'sharp', straws: 'strós', sweetener: 'suítener',
+  true: 'tru', yourselves: 'yorsélvs',
+});
+
+// Mesas nuevas (lote 6).
+Object.assign(WORDS, {
+  biscuit: 'bískit', biscuits: 'bískits', bus: 'bas', coffees: 'cófis', combo: 'cómbou', docks: 'doks', dollar: 'dólar', fee: 'fi', florida: 'flórida', guest: 'guest', keep: 'kip',
+  kid: 'kid', main: 'méin', music: 'miúsic', natural: 'náchural', part: 'part', per: 'per', person: 'pérson', plain: 'pléin', portions: 'pórshons', quick: 'cuík', restaurants: 'réstorants',
+  ride: 'ráid', short: 'short', simple: 'símpol', south: 'sáuz', usually: 'iúshuali', visit: 'vísit',
+});
+
+// Mesas nuevas (lote 7).
+Object.assign(WORDS, {
+  amount: 'amáunt', chili: 'chíli', confirmed: 'conférmd', cooking: 'cúking', correct: 'corrékt', driver: 'dráiver', ended: 'énded', fixed: 'fikst', front: 'frant', goes: 'góus',
+  goodbye: 'gudbái', herbs: 'erbs', his: 'jis', jars: 'charz', luck: 'lak', mostly: 'móustli', oil: 'óil', olive: 'ólive', quite: 'cuáit', refreshing: 'rifréshing', sell: 'sel',
+  shift: 'shift', show: 'shóu', strong: 'strong', traffic: 'tráfic', trip: 'trip',
+});
+
+// Mesas nuevas (lote 8).
+Object.assign(WORDS, {
+  bottom: 'bótom', cleaning: 'clíning', confirmation: 'confirméishon', cooler: 'cúler', doctor: 'dóctor', email: 'ímeil', exit: 'égsit', fan: 'fan', fixing: 'fíxing', handle: 'jándol',
+  hard: 'jard', helps: 'jelps', honest: 'ónest', job: 'yob', law: 'lo', lose: 'lus', other: 'áder', page: 'péich', pass: 'pas', payments: 'péiments', policy: 'pólisi', stains: 'stéins',
+  system: 'sístem', trying: 'tráiing', week: 'uik', written: 'ríten',
+});

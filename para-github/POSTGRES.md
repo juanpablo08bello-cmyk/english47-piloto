@@ -21,6 +21,10 @@ Si ya existe progreso SQLite, detener escrituras en el origen y hacer una copia 
 
 La importación abre el origen en lectura, verifica claves foráneas y columnas, copia todas las tablas en una transacción y ajusta los ID siguientes. Un destino con datos impide la operación. Conservar la copia original y comparar totales antes de retirar el servidor anterior. Si el archivo es anterior a v3, actualizar primero una copia mediante el flujo SQLite existente.
 
+## Migración 2: menú propio de Mesas 2.0
+
+La versión 2 del esquema (`server/storage/002-menus.sql`) agrega la tabla `menu_items`. **No está aplicada a ninguna base.** Antes de aplicarla en producción, haz un `pg_dump` (ver Respaldos). Se aplica con `npm run db:init` (detecta la versión 1 y solo ejecuta la 002) o pegando el SQL en el editor de Supabase. El servidor arranca con la versión 1 o la 2; sin la 2, las rutas `/api/mesas/menu` responden 503. Detalle en `docs/reforma/31-api-mesas.md`.
+
 ## Arranque del piloto
 
 Configurar PILOT_FREE=true, DATABASE_URL, COOKIE_SECURE=true, PUBLIC_ORIGIN y un ADMIN_INVITE_CODE aleatorio de entre 32 y 128 caracteres de letras, números, guion o guion bajo. El administrador puede generar ese secreto en su gestor de contraseñas. Usar Node 22.13 o superior y npm start. La primera invitación se abre en la URL de la web seguida de /#/invite/ y el valor del secreto. Canjear en privado y retirar ADMIN_INVITE_CODE del entorno una vez creada la cuenta. En PostgreSQL las invitaciones de administrador no se imprimen en los logs. A partir de entonces invitar a cada alumno desde Administración.

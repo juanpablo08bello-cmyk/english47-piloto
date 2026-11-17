@@ -182,9 +182,26 @@ CREATE TABLE IF NOT EXISTS feedback (
   created_at TEXT NOT NULL,
   UNIQUE (user_id, request_id)
 );
+-- v4 (Mesas 2.0): menu propio del alumno o gerente. Solo lo lee su dueno. Copia en server/storage/002-menus.sql (PostgreSQL).
+CREATE TABLE IF NOT EXISTS menu_items (
+  id INTEGER PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  restaurant_id TEXT NOT NULL DEFAULT 'propio',
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  name TEXT NOT NULL,
+  name_key TEXT NOT NULL,
+  category TEXT NOT NULL CHECK (category IN ('entrada','principal','guarnicion','postre','bebida','alcohol','vino')),
+  description TEXT NOT NULL DEFAULT '',
+  allergens TEXT NOT NULL DEFAULT '',
+  price_cents INTEGER CHECK (price_cents IS NULL OR (price_cents >= 0 AND price_cents <= 999999)),
+  created_at TEXT NOT NULL,
+  UNIQUE (user_id, restaurant_id, name_key)
+);
+CREATE INDEX IF NOT EXISTS idx_menu_items_owner ON menu_items(user_id, restaurant_id, sort_order);
 `;
 
-export const SCHEMA_VERSION = 3;
+// v4: tabla menu_items (se crea sola con SCHEMA; la migracion solo sube el numero y deja la copia previa de siempre).
+export const SCHEMA_VERSION = 4;
 
 const hasColumn = (db, table, column) => db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === column);
 

@@ -283,6 +283,18 @@ test('Aprender palabras: paga una vez, cuenta para la racha y genera tandas al a
 });
 
 const hacerTandas = async (api, n) => { let out; for (let i = 0; i < n; i++) { await api('POST', '/api/aprender/generar'); out = (await api('POST', '/api/aprender/terminar')).data; } return out; };
+// Un día de Conversación: el pack de hoy (con voz simulada) y, si toca, el repaso de lo ya aprendido.
+const hacerConv = async (api, kind = 'pack') => {
+  const home = (await api('GET', '/api/conversacion')).data;
+  const list = kind === 'repaso' ? home.review : (home.pack ?? []);
+  for (const f of list) await api('POST', '/api/conversacion/intento', { index: f.id, heard: f.en });
+  return (await api('POST', '/api/conversacion/terminar', { kind })).data;
+};
+const hacerDia = async (api) => {
+  const home = (await api('GET', '/api/conversacion')).data;
+  if (home.review.length) await hacerConv(api, 'repaso');
+  return await hacerConv(api, 'pack');
+};
 const hacerMesas = async (api, n) => {
   let out;
   for (let i = 0; i < n; i++) {
@@ -389,21 +401,22 @@ test('Escuchar: genera audios sin fin, compara con la frase y repetir no cuenta 
   await app.stop();
 });
 
-test('la racha pide 2 tandas, 2 mesas y 2 audios, en cualquier orden, y paga una sola vez', async () => {
+test('la racha pide la Conversación de hoy y 2 mesas (el repaso solo si toca), en cualquier orden, y paga una sola vez', async () => {
   const app = await startApp();
   const api = await login(app, 'ana');
   const racha = async () => (await api('GET', '/api/today')).data.stats.current;
-  await hacerTandas(api, 1);
   await hacerMesas(api, 1);
-  await hacerAudios(api, 1);
   assert.equal(await racha(), 0, 'justo antes de cada meta todavía no');
   assert.equal(app.db.prepare('SELECT COUNT(*) n FROM streak_days').get().n, 0);
-  const tandas = await hacerTandas(api, 1);
-  assert.equal(tandas.rewards.xp, 15);
-  assert.equal(tandas.plan.learn.done, true);
-  const audios = await hacerAudios(api, 1);
-  assert.equal(audios.daily.rewards.xp, 15);
-  assert.equal(await racha(), 0, 'falta la última sección');
+  // Una pasada sin voz no cuenta: hacen falta 3 frases dichas, o el modo silencioso.
+  const few = await api('POST', '/api/conversacion/terminar', { kind: 'pack' });
+  assert.equal(few.status, 400);
+  assert.equal(await racha(), 0);
+  const conv = await hacerConv(api);
+  assert.equal(conv.rewards.xp, 15);
+  assert.equal(conv.plan.conv.done, true);
+  assert.equal(conv.plan.review.done, true, 'sin frases por repasar, el repaso ya está hecho');
+  assert.equal(conv.stats.current, 0, 'falta la segunda mesa');
   const mesas = await hacerMesas(api, 1);
   assert.equal(mesas.rewards.xp, 25);
   assert.equal(mesas.rewards.coins, 20);
@@ -412,9 +425,11 @@ test('la racha pide 2 tandas, 2 mesas y 2 audios, en cualquier orden, y paga una
   assert.equal(mesas.stats.current, 1);
   const today = (await api('GET', '/api/today')).data;
   assert.equal(today.plan.doneCount, 3);
-  assert.equal(today.stats.xp, 55);
+  assert.equal(today.stats.xp, 40);
   assert.equal(today.stats.coins, 20 + today.mesas.tips, 'un pago por día más las propinas');
   assert.equal(app.db.prepare('SELECT full_done f FROM streak_days').get().f, 1);
+  const again = (await api('POST', '/api/conversacion/terminar', { kind: 'pack' })).data;
+  assert.equal(again.already, true, 'repetir la pasada no paga ni avanza otra vez');
   const extra = await hacerMesas(api, 1);
   assert.equal(extra.rewards.xp, 0);
   assert.equal(extra.rewards.coins, 0);
@@ -426,9 +441,8 @@ test('el ranking ordena por racha y propinas, y solo muestra nombre y puntaje', 
   const app = await startApp();
   const ana = await login(app, 'ana');
   const beto = await login(app, 'beto');
-  await hacerTandas(ana, 2);
+  await hacerDia(ana);
   await hacerMesas(ana, 2);
-  await hacerAudios(ana, 2);
   await hacerMesas(beto, 1);
   const seenByBeto = (await beto('GET', '/api/ranking')).data;
   assert.deepEqual(seenByBeto.streak.map((r) => [r.pos, r.value]), [[1, 1], [2, 0]]);
@@ -462,33 +476,36 @@ test('la propina se guarda en las monedas y alcanza para comprar', async () => {
   assert.ok(summary.tip >= 24);
   const { tips } = (await api('GET', '/api/today')).data.mesas;
   assert.equal(stats.coins, tips + 0, 'cada dólar de propina es una moneda');
-  const buy = await api('POST', '/api/shop/buy', { itemId: 'neck_blue', requestId: 'r1' });
+  const buy = await api('POST', '/api/shop/buy', { itemId: 'look_capibara_22', requestId: 'r1' });
   assert.equal(buy.status, 200);
-  assert.equal(buy.data.stats.coins, tips - 60);
+  assert.equal(buy.data.stats.coins, tips - SHOP_ITEMS.find((i) => i.id === 'look_capibara_22').price);
   assert.equal((await api('GET', '/api/ranking')).data.tips[0].value, tips, 'gastar no baja el ranking de propinas');
   await app.stop();
 });
 
-test('la tienda vende 8 animales y mucha ropa, y la capibara no se compra', async () => {
+test('la tienda vende 9 animales con 24 looks exclusivos cada uno, y la capibara no se compra', async () => {
   const kinds = {};
   for (const i of SHOP_ITEMS) (kinds[i.kind] ??= []).push(i);
-  assert.equal(kinds.animal.length, 8);
-  assert.ok(kinds.vest.length >= 8 && kinds.hat.length >= 8 && kinds.glasses.length >= 4 && kinds.neck.length >= 5);
+  assert.equal(kinds.animal.length, 9);
+  assert.equal(kinds.look.length, 240, '10 animales x 24 looks (la capibara también tiene los suyos)');
   assert.equal(new Set(SHOP_ITEMS.map((i) => i.id)).size, SHOP_ITEMS.length);
-  assert.ok(SHOP_ITEMS.every((i) => i.price > 0 && i.name));
-  assert.ok(!SHOP_ITEMS.some((i) => /capyb|capib/i.test(i.id)), 'la capibara siempre es gratis');
+  assert.ok(SHOP_ITEMS.every((i) => (i.price > 0 || i.earn) && i.name));
+  assert.ok(!SHOP_ITEMS.some((i) => i.kind === 'animal' && /capyb|capib/i.test(i.id)), 'la capibara siempre es gratis');
   const app = await startApp();
   const api = await login(app, 'ana');
   assert.deepEqual((await api('GET', '/api/profile')).data.user.equipped, {}, 'toda cuenta nueva empieza con la capibara');
   assert.equal((await api('POST', '/api/avatar/equip', { itemId: 'animal_lion' })).status, 403, 'no se usa sin comprar');
   const { id } = app.db.prepare("SELECT id FROM users WHERE username='ana'").get();
   app.db.prepare('INSERT INTO reward_events (user_id, key, xp, coins, created_at) VALUES (?,?,0,2000,?)').run(id, 'prueba', '2026-11-05T14:00:00.000Z');
+  assert.equal((await api('POST', '/api/shop/buy', { itemId: 'look_leon_03', requestId: 'x' })).status, 400, 'un look pide tener antes al animal');
   assert.equal((await api('POST', '/api/shop/buy', { itemId: 'animal_lion', requestId: 'a' })).status, 200);
   assert.deepEqual((await api('POST', '/api/avatar/equip', { itemId: 'animal_lion' })).data.equipped, { animal: 'animal_lion' });
-  assert.equal((await api('POST', '/api/shop/buy', { itemId: 'hat_crown', requestId: 'b' })).status, 200);
-  assert.deepEqual((await api('POST', '/api/avatar/equip', { itemId: 'hat_crown' })).data.equipped, { animal: 'animal_lion', hat: 'hat_crown' }, 'cada animal lleva sus accesorios');
-  assert.equal((await api('GET', '/api/ranking')).data.streak[0].look.animal, 'animal_lion');
-  assert.deepEqual((await api('POST', '/api/avatar/equip', { slot: 'animal' })).data.equipped, { hat: 'hat_crown' }, 'se puede volver a la capibara');
+  assert.equal((await api('POST', '/api/shop/buy', { itemId: 'look_leon_13', requestId: 'b' })).status, 200);
+  assert.deepEqual((await api('POST', '/api/avatar/equip', { itemId: 'look_leon_13' })).data.equipped, { animal: 'animal_lion', look: 'look_leon_13' }, 'el look va con su animal');
+  assert.equal((await api('GET', '/api/ranking')).data.streak[0].look.look, 'look_leon_13');
+  assert.equal((await api('POST', '/api/shop/buy', { itemId: 'look_leon_16', requestId: 'c' })).status, 400, 'un look de logro no se compra');
+  assert.equal((await api('POST', '/api/avatar/equip', { itemId: 'look_gato_01' })).status, 403, 'el look de otro animal no se usa sin comprarlo');
+  assert.deepEqual((await api('POST', '/api/avatar/equip', { slot: 'animal' })).data.equipped, {}, 'al volver a la capibara se quita el look del león');
   assert.equal((await api('POST', '/api/avatar/equip', { slot: 'password_hash' })).status, 400);
   await app.stop();
 });
@@ -500,12 +517,12 @@ test('la temporada nueva pone todo en cero sin borrar ni tocar nada más', async
     const beto = await login(app, 'beto');
     const { id } = app.db.prepare("SELECT id FROM users WHERE username='ana'").get();
     await hacerTandas(ana, 2);
+    await hacerDia(ana);
     await hacerMesas(ana, 2);
-    await hacerAudios(ana, 2);
     await hacerMesas(beto, 1);
     app.db.prepare('INSERT INTO reward_events (user_id, key, xp, coins, created_at) VALUES (?,?,0,500,?)').run(id, 'extra', '2026-11-05T14:00:00.000Z');
-    assert.equal((await ana('POST', '/api/shop/buy', { itemId: 'hat_cap', requestId: 'x' })).status, 200);
-    await ana('POST', '/api/avatar/equip', { itemId: 'hat_cap' });
+    assert.equal((await ana('POST', '/api/shop/buy', { itemId: 'look_capibara_03', requestId: 'x' })).status, 200);
+    await ana('POST', '/api/avatar/equip', { itemId: 'look_capibara_03' });
     app.db.prepare('UPDATE users SET shields=2 WHERE id=?').run(id);
     const before = (await ana('GET', '/api/today')).data;
     assert.equal(before.stats.current, 1);
@@ -550,36 +567,35 @@ test('la temporada nueva pone todo en cero sin borrar ni tocar nada más', async
 
     // Lo comprado antes se puede volver a comprar, y esta vez sí cuesta.
     app.db.prepare('INSERT INTO reward_events (user_id, key, xp, coins, created_at) VALUES (?,?,0,500,?)').run(id, 'regalo', new Date(app.clockBox.now).toISOString());
-    assert.equal((await ana('POST', '/api/avatar/equip', { itemId: 'hat_cap' })).status, 403, 'no se usa sin comprar otra vez');
-    const rebuy = await ana('POST', '/api/shop/buy', { itemId: 'hat_cap', requestId: 'y' });
+    assert.equal((await ana('POST', '/api/avatar/equip', { itemId: 'look_capibara_03' })).status, 403, 'no se usa sin comprar otra vez');
+    const rebuy = await ana('POST', '/api/shop/buy', { itemId: 'look_capibara_03', requestId: 'y' });
     assert.equal(rebuy.status, 200);
-    assert.equal(rebuy.data.stats.coins, 380);
-    assert.deepEqual((await ana('POST', '/api/avatar/equip', { itemId: 'hat_cap' })).data.equipped, { hat: 'hat_cap' });
-    assert.deepEqual((await ana('GET', '/api/profile')).data.user.equipped, { hat: 'hat_cap' });
-    assert.equal((await ana('GET', '/api/ranking')).data.streak.find((r) => r.me).look.hat, 'hat_cap');
+    assert.equal(rebuy.data.stats.coins, 500 - SHOP_ITEMS.find((i) => i.id === 'look_capibara_03').price);
+    assert.deepEqual((await ana('POST', '/api/avatar/equip', { itemId: 'look_capibara_03' })).data.equipped, { look: 'look_capibara_03' });
+    assert.deepEqual((await ana('GET', '/api/profile')).data.user.equipped, { look: 'look_capibara_03' });
+    assert.equal((await ana('GET', '/api/ranking')).data.streak.find((r) => r.me).look.look, 'look_capibara_03');
     app.db.prepare("DELETE FROM reward_events WHERE key='regalo'").run();
-    await ana('POST', '/api/avatar/equip', { slot: 'hat' });
+    await ana('POST', '/api/avatar/equip', { slot: 'look' });
 
     // Se puede volver a ganar todo el mismo día, sin que lo anterior lo bloquee.
     await hacerTandas(ana, 2);
-    await hacerAudios(ana, 2);
+    await hacerDia(ana);
     const done = await hacerMesas(ana, 2);
     assert.equal(done.rewards.newDay, true);
     assert.equal(done.plan.allDone, true);
     assert.equal(done.stats.current, 1);
     assert.equal(done.stats.xp, 55);
     const tips = (await ana('GET', '/api/today')).data.mesas.tips;
-    assert.equal(done.stats.coins, 20 + tips - 120, 'las monedas ganadas, menos la gorra');
+    assert.equal(done.stats.coins, 20 + tips - SHOP_ITEMS.find((i) => i.id === 'look_capibara_03').price, 'las monedas ganadas, menos la gorra');
     assert.equal((await ana('GET', '/api/aprender')).data.seen, 8, 'cuenta las frases vistas de nuevo');
     assert.ok(done.rewards.achievements.length >= 0);
     assert.ok((await ana('GET', '/api/profile')).data.achievements.some((a) => a.earnedAt), 'y vuelve a ganar logros');
     // Y al otro día la racha sigue.
     app.clockBox.now += 86400000;
-    await hacerTandas(ana, 2);
-    await hacerAudios(ana, 2);
+    await hacerDia(ana);
     const second = await hacerMesas(ana, 2);
     assert.equal(second.stats.current, 2);
-    assert.equal(second.stats.xp, 110);
+    assert.equal(second.stats.xp, 95);
     assert.equal((await ana('GET', '/api/profile')).data.calendar.length, 2);
     assert.equal((await ana('GET', '/api/mesas')).data.progress.done, 4, 'las mesas vuelven a sumar');
   } finally {
@@ -591,7 +607,7 @@ test('la temporada nueva pone todo en cero sin borrar ni tocar nada más', async
 test('la racha: días seguidos suman, saltar un día la corta y el protector la salva', async () => {
   const app = await startApp();
   const api = await login(app, 'ana');
-  const dia = async () => { await hacerTandas(api, 2); await hacerAudios(api, 2); return (await hacerMesas(api, 2)).stats.current; };
+  const dia = async () => { await hacerDia(api); return (await hacerMesas(api, 2)).stats.current; };
   const { id } = app.db.prepare("SELECT id FROM users WHERE username='ana'").get();
   assert.equal(await dia(), 1);
   app.clockBox.now += 86400000;
@@ -841,7 +857,7 @@ test('la revisión entiende palabras de igual sentido, ignora muletillas y es ju
 
 test('la temporada de producción está definida y las claves la llevan', () => {
   const source = readFileSync('server/season.js', 'utf8');
-  assert.match(source, /const SEASON = \{ id: 1, start: '\d{4}-\d{2}-\d{2}T[\d:.]+Z' \}/);
+  assert.match(source, /const SEASON = \{ id: 2, start: '\d{4}-\d{2}-\d{2}T[\d:.]+Z' \}/);
   setSeason({ id: 1, start: '2026-01-01T00:00:00.000Z' });
   assert.equal(seasonKey('day:2026-11-08'), 's1:day:2026-11-08');
   setSeason(null);
@@ -892,9 +908,8 @@ test('datos de una versión anterior: racha, propinas y jornada a medias siguen 
   assert.equal(end.plan.tables.done, true);
   assert.equal(end.summary.tip, open.steps.length * 8);
   assert.equal((await api('POST', '/api/aprender/terminar')).status, 200, 'la tanda vieja se puede terminar');
-  await hacerTandas(api, 1);
-  const last = await hacerAudios(api, 1);
-  assert.equal(last.daily.rewards.newDay, true);
+  const last = await hacerConv(api);
+  assert.equal(last.rewards.newDay, true);
   assert.equal((await api('GET', '/api/today')).data.stats.current, 3, 'al cumplir la meta nueva, la racha sigue subiendo');
   const rank = (await api('GET', '/api/ranking')).data;
   assert.equal(rank.streak[0].value, 3);
@@ -996,4 +1011,3 @@ test('Pronunciar: mide lo que dijo sin frase de referencia', () => {
   assert.equal(poor.answered, false);
   assert.equal(poor.tip.word, 'hello');
 });
-

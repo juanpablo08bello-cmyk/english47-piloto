@@ -3,6 +3,7 @@
 // En cada beat: guest (variantes), goal, hint, accept (basta con una lista cuyas palabras
 // aparezcan todas), model y alt (respuestas de referencia), options (ejemplos para la demo).
 import { SCENARIO_VARIANTS } from './scenarios-extra.js';
+import { EXPRESARSE_SCENARIOS } from './scenarios-expresarse.js';
 
 const criterion = (id, es, task = null) => ({ id, es, task });
 
@@ -135,5 +136,5 @@ const BASE_SCENARIOS = [
   },
 ];
 
-export const SCENARIOS = [...BASE_SCENARIOS, ...SCENARIO_VARIANTS];
+export const SCENARIOS = [...BASE_SCENARIOS, ...SCENARIO_VARIANTS, ...EXPRESARSE_SCENARIOS];
 export const SCENARIO_BY_ID = new Map(SCENARIOS.map((s) => [s.id, s]));

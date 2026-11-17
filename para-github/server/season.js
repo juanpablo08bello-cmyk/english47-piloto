@@ -1,7 +1,8 @@
 // Temporada: el juego solo cuenta lo ganado desde su inicio. Racha, XP, monedas, propinas, mesas y dificultad,
 // frases vistas, logros y compras arrancan en cero. Las filas anteriores no se borran.
 // Se quedan las cuentas, sus contraseñas y las secciones antiguas de Más práctica.
-const SEASON = { id: 1, start: '2026-11-07T06:38:55.932Z' };
+// Temporada 2 = ENGLISH47 2.0 (nuevo sistema de estudio): todos empiezan de cero. La temporada 1 sigue guardada en la base.
+const SEASON = { id: 2, start: '2026-11-16T20:50:49.000Z' };
 
 // En las pruebas el reloj es fijo y anterior a la temporada: cada prueba elige la suya con setSeason.
 const OPEN_SEASON = { id: 0, start: '1970-01-01T00:00:00.000Z' };
