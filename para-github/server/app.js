@@ -810,7 +810,7 @@ export function createApp({ db, config, services, clock = Date.now }) {
     const cancel = () => { if (!res.writableEnded) controller.abort(); };
     res.on('close', cancel);
     try {
-      const { audio, mimeType } = await services.tts.speak({ text, signal: controller.signal, voice: persona?.voice, style: persona?.style, azure: persona?.azure, rate: persona?.rate });
+      const { audio, mimeType } = await services.tts.speak({ text, signal: controller.signal, voice: persona?.voice, style: persona?.style, azure: persona?.azure, rate: persona?.rate, pitch: persona?.pitch });
       if (res.destroyed) return;
       await logUsage(db, user, 'tts', services.tts.name, text.length, 'chars', now);
       return { audio, mimeType };

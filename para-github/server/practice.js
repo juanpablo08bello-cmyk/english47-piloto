@@ -956,8 +956,8 @@ export async function generateImprove(db, user, mode, now, rng = Math.random) {
   const { improve } = session.state.practice;
   const id = improve.nextId;
   improve.nextId += 1;
-  const { azure, voice, accent } = CAST[Math.floor(rng() * CAST.length)];
-  const persona = { azure, voice, accent, mood: 'friendly' };
+  const { azure, voice, accent, gender } = CAST[Math.floor(rng() * CAST.length)];
+  const persona = { azure, voice, accent, gender, mood: 'friendly' };
   let item;
   if (mode === 'escuchar') {
     const { en, es, who = 'mesero' } = pickLine(session.state.practice, rng);
@@ -1036,6 +1036,7 @@ export function speechPersona(persona) {
   return {
     voice: VOICES.has(persona.voice) ? persona.voice : null,
     azure: AZURE_VOICES.has(persona.azure) ? persona.azure : null,
+    pitch: /^[+-]\d{1,2}%$/.test(persona.pitch ?? '') ? persona.pitch : null,
     style: accent && mood ? `${accent.prompt}, sounding ${mood.prompt}` : null,
     // El tipo de cliente (Servicio libre) puede fijar el ritmo; si no, lo pone el ánimo.
     rate: (Object.hasOwn(PACES, persona.pace) ? PACES[persona.pace] : null) ?? mood?.rate ?? null,

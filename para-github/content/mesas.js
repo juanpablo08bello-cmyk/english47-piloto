@@ -38,7 +38,7 @@ export const MOODS = {
 // Cada personaje tiene una voz real de Azure, con su acento. `voice` es la alternativa de Gemini.
 const FEMALE = ['Kore', 'Aoede', 'Leda', 'Zephyr'];
 const MALE = ['Puck', 'Charon', 'Orus', 'Fenrir'];
-const person = (name, gender, accent, azure, i) => ({ name, accent, azure, voice: (gender === 'f' ? FEMALE : MALE)[i % 4] });
+const person = (name, gender, accent, azure, i) => ({ name, gender, accent, azure, voice: (gender === 'f' ? FEMALE : MALE)[i % 4] });
 export const CAST = [
   ['Linda', 'f', 'us', 'en-US-AvaNeural'], ['Mike', 'm', 'us', 'en-US-AndrewNeural'], ['Grace', 'f', 'us', 'en-US-JennyNeural'],
   ['Tony', 'm', 'us', 'en-US-GuyNeural'], ['Emma', 'f', 'us', 'en-US-EmmaNeural'], ['Brian', 'm', 'us', 'en-US-BrianNeural'],
@@ -60,6 +60,8 @@ export const CAST = [
   ['Isabella', 'f', 'italy', 'it-IT-IsabellaMultilingualNeural'], ['Giuseppe', 'm', 'italy', 'it-IT-GiuseppeMultilingualNeural'],
 ].map(([name, gender, accent, azure], i) => person(name, gender, accent, azure, i));
 export const CAST_SIZE = CAST.length;
+/** Género del arte de cada tipo de cliente (web/public/art/cli_*.webp). */
+export const CLIENTE_GENERO = { ejecutivo: 'm', turista: 'm', familia: 'm', influencer: 'f', vip: 'f' };
 export const VOICES = new Set(CAST.map((c) => c.voice));
 // Sebastián no atiende mesas: es una de las voces para imitar.
 export const AZURE_VOICES = new Set([...CAST.map((c) => c.azure), 'es-VE-SebastianNeural']);
@@ -1073,7 +1075,9 @@ export function buildMesa(rng = Math.random, { done = 0, level = null, avoidScen
   const scene = chooseScene(rng, info.level, avoidScenes, only, rest, cliente);
   const fresh = CAST.filter((p) => !avoidNames.includes(p.name));
   // Si el tipo de cliente no deja a nadie libre (acento y nombres recientes), se relaja primero lo reciente y luego el acento.
-  const byAccent = (list) => (cliente ? list.filter((p) => cliente.accents.includes(p.accent)) : list);
+  // El arte de cada tipo de cliente tiene género: la voz tiene que coincidir con lo que se ve.
+  const artGender = clienteId ? CLIENTE_GENERO[clienteId] : null;
+  const byAccent = (list) => (cliente ? list.filter((p) => cliente.accents.includes(p.accent) && (!artGender || p.gender === artGender)) : list);
   const pool = [byAccent(fresh), byAccent(CAST), fresh, CAST].find((l) => l.length);
   const cast = pick(rng, pool);
   const moodId = pick(rng, cliente ? cliente.moods : Object.keys(MOODS));
@@ -1095,7 +1099,7 @@ export function buildMesa(rng = Math.random, { done = 0, level = null, avoidScen
   const closing = scene.tense
     ? pick(rng, [L('Thank you for your help.', 'Gracias por su ayuda.'), L('Okay. Thank you.', 'Bien. Gracias.')])
     : pick(rng, [mood.closing, L('Perfect, thank you so much!', '¡Perfecto, muchas gracias!'), L('You are very kind. Thank you!', 'Es muy amable. ¡Gracias!')]);
-  const persona = { name: cast.name, voice: cast.voice, azure: cast.azure, accent: cast.accent, accentEs: ACCENTS[cast.accent].es, mood: moodId, moodEs: mood.es };
+  const persona = { name: cast.name, gender: cast.gender, voice: cast.voice, azure: cast.azure, accent: cast.accent, accentEs: ACCENTS[cast.accent].es, mood: moodId, moodEs: mood.es };
   if (cliente) Object.assign(persona, { cliente: clienteId, clienteEs: cliente.es, pace: cliente.pace });
   return {
     title: `Mesa de ${cast.name}`,

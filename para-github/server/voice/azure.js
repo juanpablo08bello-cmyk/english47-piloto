@@ -61,11 +61,12 @@ export function azureSpeech({ apiKey, region }, transport = fetch, { retryMs = 8
     },
     tts: {
       name: 'azure:neural-voices',
-      async speak({ text, signal, azure, rate }) {
+      async speak({ text, signal, azure, rate, pitch }) {
         const voice = VOICE_ID.test(azure ?? '') ? azure : DEFAULT_VOICE;
         const lang = voice.slice(0, 5);
         const pace = /^-\d{1,2}%$/.test(rate ?? '') ? rate : DEFAULT_RATE;
-        const ssml = `<speak version="1.0" xml:lang="${lang}"><voice name="${voice}"><prosody rate="${pace}">${xml(text)}</prosody></voice></speak>`;
+        const tone = /^[+-]\d{1,2}%$/.test(pitch ?? '') ? ` pitch="${pitch}"` : '';
+        const ssml = `<speak version="1.0" xml:lang="${lang}"><voice name="${voice}"><prosody rate="${pace}"${tone}>${xml(text)}</prosody></voice></speak>`;
         const res = await call(`https://${region}.tts.speech.microsoft.com/cognitiveservices/v1`, {
           method: 'POST',
           headers: { ...headers, 'Content-Type': 'application/ssml+xml', 'X-Microsoft-OutputFormat': 'riff-24khz-16bit-mono-pcm' },
